@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTrainingWeek } from '@/hooks/use-training'
 import { useNutritionWeek } from '@/hooks/use-nutrition'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dumbbell, UtensilsCrossed, ChevronDown } from 'lucide-react'
@@ -9,7 +9,6 @@ import { cn } from '@/lib/utils'
 import type { TrainingDayPlan, NutritionDayPlan, PlannedExercise, MealPlan } from '@/lib/types'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const NC_DAY_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
 
 function todayDayOfWeek(): number {
   const d = new Date().getDay()
