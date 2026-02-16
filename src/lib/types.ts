@@ -169,3 +169,73 @@ export interface NutritionWeekData {
   plan_name: string
   days: NutritionDayPlan[]
 }
+
+// Workout tracking types
+export interface WorkoutSessionData {
+  available: boolean
+  workout_name: string
+  day_plan_id: string
+  exercises: PlannedExercise[]
+  last_session: {
+    available: boolean
+    date: string
+    day_plan_id: string
+    exercises: {
+      exercise_id: string
+      planned_exercise_id: string
+      name: string
+      sets: { set_number: number; weight: number; reps: number; rpe: number | null }[]
+    }[]
+  } | null
+}
+
+export interface WorkoutLogPayload {
+  day_plan_id: string
+  date: string
+  completed_fully: boolean
+  duration_minutes: number
+  source: 'pwa'
+  exercises: {
+    planned_exercise_id: string
+    exercise_id: string
+    sets: { set_number: number; weight: number; reps: number; rpe: number | null }[]
+  }[]
+}
+
+// Meal tracking types
+export interface MealLogsToday {
+  date: string
+  logged_meals: {
+    meal_number: number
+    status: string
+    adherence: number
+  }[]
+  daily_totals: {
+    protein_consumed: number
+    carbs_consumed: number
+    fat_consumed: number
+    calories_consumed: number
+  }
+  daily_targets: {
+    protein_target: number
+    carbs_target: number
+    fat_target: number
+    calories_target: number
+  }
+}
+
+export interface MealLogPayload {
+  date: string
+  meal_number: number
+  meal_label: string
+  status: string
+  adherence: number
+  notes: string | null
+  source: 'pwa'
+  foods: {
+    food_name: string
+    grams_actual: number
+    is_substitution: boolean
+    original_food?: string
+  }[]
+}

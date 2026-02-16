@@ -7,12 +7,20 @@ class AuthError extends Error {
   }
 }
 
-export async function apiFetch<T>(endpoint: string): Promise<T> {
+export async function apiFetch<T>(
+  endpoint: string,
+  opts?: { method?: string; body?: unknown },
+): Promise<T> {
   const token = localStorage.getItem('client_jwt')
   if (!token) throw new AuthError()
 
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+  if (opts?.body) headers['Content-Type'] = 'application/json'
+
   const res = await fetch(`${API_BASE}/api/client${endpoint}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    method: opts?.method || 'GET',
+    headers,
+    body: opts?.body ? JSON.stringify(opts.body) : undefined,
   })
 
   if (res.status === 401) {

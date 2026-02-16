@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom'
-import { Calendar, ClipboardList, TrendingUp, BarChart3 } from 'lucide-react'
+import { Calendar, ClipboardList, Target, TrendingUp, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', icon: Calendar, label: 'Today' },
   { to: '/plans', icon: ClipboardList, label: 'Plans' },
+  { to: '/track', icon: Target, label: 'Track' },
   { to: '/progress', icon: TrendingUp, label: 'Progress' },
   { to: '/summary', icon: BarChart3, label: 'Summary' },
 ]

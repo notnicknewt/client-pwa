@@ -157,6 +157,15 @@ function TrainingCard({
                     </div>
                   )
                 })}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    navigate('/track/workout')
+                  }}
+                  className="w-full mt-2 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"
+                >
+                  Start Workout
+                </button>
               </div>
             )}
           </div>
