@@ -1,8 +1,14 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useToday } from '@/hooks/use-today'
+import { useTrainingToday } from '@/hooks/use-training'
+import { useNutritionToday } from '@/hooks/use-nutrition'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Dumbbell, UtensilsCrossed, MessageSquare } from 'lucide-react'
+import { Dumbbell, UtensilsCrossed, MessageSquare, ChevronRight, ChevronDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import type { PlannedExercise, MealPlan } from '@/lib/types'
 
 export default function Today() {
   const { data, isLoading, error } = useToday()
@@ -30,69 +36,21 @@ export default function Today() {
 
   return (
     <div className="space-y-4">
-      {/* Training Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Dumbbell className="h-5 w-5 text-primary" />
-            Training
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.training.available ? (
-            <div>
-              {data.training.is_training_day ? (
-                <div>
-                  <p className="font-medium">{data.training.workout_name || 'Workout'}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {data.training.exercise_count} exercises
-                  </p>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary">Rest Day</Badge>
-                  <span className="text-sm text-muted-foreground">Recover and recharge</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Training plan not connected</p>
-          )}
-        </CardContent>
-      </Card>
+      <TrainingCard
+        available={data.training.available}
+        isTrainingDay={data.training.is_training_day}
+        workoutName={data.training.workout_name}
+        exerciseCount={data.training.exercise_count}
+      />
 
-      {/* Nutrition Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <UtensilsCrossed className="h-5 w-5 text-primary" />
-            Nutrition
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.nutrition.available ? (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Badge variant={data.nutrition.day_type === 'HIGH' ? 'default' : 'secondary'}>
-                  {data.nutrition.day_type || 'Standard'}
-                </Badge>
-                {data.nutrition.total_calories && (
-                  <span className="text-sm text-muted-foreground">
-                    {data.nutrition.total_calories} kcal
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <MacroBar label="Protein" value={data.nutrition.total_protein} unit="g" color="bg-blue-500" />
-                <MacroBar label="Carbs" value={data.nutrition.total_carbs} unit="g" color="bg-amber-500" />
-                <MacroBar label="Fat" value={data.nutrition.total_fat} unit="g" color="bg-pink-500" />
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nutrition plan not connected</p>
-          )}
-        </CardContent>
-      </Card>
+      <NutritionCard
+        available={data.nutrition.available}
+        dayType={data.nutrition.day_type}
+        totalCalories={data.nutrition.total_calories}
+        totalProtein={data.nutrition.total_protein}
+        totalCarbs={data.nutrition.total_carbs}
+        totalFat={data.nutrition.total_fat}
+      />
 
       {/* Check-in Card */}
       <Card>
@@ -109,6 +67,13 @@ export default function Today() {
                 {data.checkin.status === 'completed' ? 'Completed' : 'Due Today'}
               </Badge>
             </div>
+          ) : data.touchpoint?.is_touchpoint_day ? (
+            <div className="flex items-center gap-2">
+              <Badge variant={data.touchpoint.status === 'completed' ? 'success' : 'secondary'}>
+                {data.touchpoint.status === 'completed' ? 'Touchpoint Done' : 'Touchpoint Day'}
+              </Badge>
+              <span className="text-sm text-muted-foreground">Quick check-in today</span>
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">
               Next check-in: {new Date(data.checkin.next_checkin).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}
@@ -117,6 +82,184 @@ export default function Today() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Training Card (tappable, expandable)
+// ---------------------------------------------------------------------------
+
+function TrainingCard({
+  available, isTrainingDay, workoutName, exerciseCount,
+}: {
+  available: boolean
+  isTrainingDay?: boolean
+  workoutName?: string
+  exerciseCount?: number
+}) {
+  const navigate = useNavigate()
+  const [expanded, setExpanded] = useState(false)
+  const { data: detail } = useTrainingToday()
+  const hasExercises = detail?.available && detail.exercises?.length > 0
+
+  return (
+    <Card
+      className={cn('cursor-pointer transition-colors hover:bg-accent/50', !available && 'cursor-default hover:bg-transparent')}
+      onClick={() => {
+        if (!available) return
+        if (hasExercises) {
+          setExpanded(!expanded)
+        } else {
+          navigate('/plans')
+        }
+      }}
+    >
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between text-base">
+          <span className="flex items-center gap-2">
+            <Dumbbell className="h-5 w-5 text-primary" />
+            Training
+          </span>
+          {available && (
+            hasExercises
+              ? <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+              : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {available ? (
+          <div>
+            {isTrainingDay ? (
+              <div>
+                <p className="font-medium">{workoutName || 'Workout'}</p>
+                <p className="text-sm text-muted-foreground">
+                  {exerciseCount} exercises
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">Rest Day</Badge>
+                <span className="text-sm text-muted-foreground">Recover and recharge</span>
+              </div>
+            )}
+
+            {expanded && hasExercises && (
+              <div className="mt-3 pt-3 border-t space-y-1.5">
+                {detail.exercises.map((ex: PlannedExercise) => {
+                  const reps = ex.reps_max ? `${ex.reps_min}-${ex.reps_max}` : `${ex.reps_min}`
+                  return (
+                    <div key={ex.order} className="flex justify-between text-sm">
+                      <span className="truncate">{ex.name}</span>
+                      <span className="text-muted-foreground whitespace-nowrap ml-2">
+                        {ex.sets} x {reps}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Training plan not connected</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Nutrition Card (tappable, expandable)
+// ---------------------------------------------------------------------------
+
+function NutritionCard({
+  available, dayType, totalCalories, totalProtein, totalCarbs, totalFat,
+}: {
+  available: boolean
+  dayType?: string
+  totalCalories?: number
+  totalProtein?: number
+  totalCarbs?: number
+  totalFat?: number
+}) {
+  const navigate = useNavigate()
+  const [expanded, setExpanded] = useState(false)
+  const { data: detail } = useNutritionToday()
+  const hasMeals = detail?.available && detail.meals?.length > 0
+
+  return (
+    <Card
+      className={cn('cursor-pointer transition-colors hover:bg-accent/50', !available && 'cursor-default hover:bg-transparent')}
+      onClick={() => {
+        if (!available) return
+        if (hasMeals) {
+          setExpanded(!expanded)
+        } else {
+          navigate('/plans')
+        }
+      }}
+    >
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between text-base">
+          <span className="flex items-center gap-2">
+            <UtensilsCrossed className="h-5 w-5 text-primary" />
+            Nutrition
+          </span>
+          {available && (
+            hasMeals
+              ? <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+              : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {available ? (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Badge variant={dayType === 'HIGH' ? 'default' : 'secondary'}>
+                {dayType || 'Standard'}
+              </Badge>
+              {totalCalories && (
+                <span className="text-sm text-muted-foreground">
+                  {totalCalories} kcal
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <MacroBar label="Protein" value={totalProtein} unit="g" color="bg-blue-500" />
+              <MacroBar label="Carbs" value={totalCarbs} unit="g" color="bg-amber-500" />
+              <MacroBar label="Fat" value={totalFat} unit="g" color="bg-pink-500" />
+            </div>
+
+            {expanded && hasMeals && (
+              <div className="mt-3 pt-3 border-t space-y-2">
+                {detail.meals.map((meal: MealPlan) => (
+                  <div key={meal.meal_number}>
+                    <div className="flex justify-between items-baseline">
+                      <p className="text-sm font-medium">{meal.meal_label}</p>
+                      <span className="text-xs text-muted-foreground">
+                        P{Math.round(meal.protein)} C{Math.round(meal.carbs)} F{Math.round(meal.fat)}
+                      </span>
+                    </div>
+                    {meal.foods.length > 0 && (
+                      <div className="ml-2 mt-0.5">
+                        {meal.foods.map((food, i) => (
+                          <p key={i} className="text-xs text-muted-foreground">
+                            {food.name} — {Math.round(food.grams_cooked)}g
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Nutrition plan not connected</p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

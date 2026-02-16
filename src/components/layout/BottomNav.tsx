@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { Calendar, TrendingUp, BarChart3 } from 'lucide-react'
+import { Calendar, ClipboardList, TrendingUp, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', icon: Calendar, label: 'Today' },
+  { to: '/plans', icon: ClipboardList, label: 'Plans' },
   { to: '/progress', icon: TrendingUp, label: 'Progress' },
   { to: '/summary', icon: BarChart3, label: 'Summary' },
 ]
@@ -18,7 +19,7 @@ export function BottomNav() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex flex-col items-center gap-1 px-4 py-2 text-xs transition-colors',
+                'flex flex-col items-center gap-1 px-3 py-2 text-xs transition-colors',
                 isActive ? 'text-primary' : 'text-muted-foreground'
               )
             }

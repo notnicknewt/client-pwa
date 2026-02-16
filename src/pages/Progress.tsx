@@ -9,6 +9,13 @@ import {
 } from 'recharts'
 import { cn } from '@/lib/utils'
 
+const COMPLIANCE_BARS: { key: string; label: string }[] = [
+  { key: 'training', label: 'Training' },
+  { key: 'nutrition', label: 'Nutrition' },
+  { key: 'official_checkin', label: 'Official Check-in' },
+  { key: 'touchpoints', label: 'Touchpoints' },
+]
+
 export default function Progress() {
   const { data: weight, isLoading: weightLoading, error: weightError } = useWeight()
   const { data: compliance, isLoading: complianceLoading, error: complianceError } = useCompliance()
@@ -114,13 +121,14 @@ export default function Progress() {
 
             {/* This Week Bars */}
             <div className="mt-4 space-y-2">
-              {(['training', 'nutrition', 'checkin'] as const).map((key) => {
-                const item = compliance.this_week[key]
+              {COMPLIANCE_BARS.map(({ key, label }) => {
+                const item = (compliance.this_week as Record<string, { completed: number; target: number }>)[key]
+                if (!item) return null
                 const pct = item.target > 0 ? Math.min(100, (item.completed / item.target) * 100) : 0
                 return (
                   <div key={key}>
                     <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                      <span className="capitalize">{key === 'checkin' ? 'Check-in' : key}</span>
+                      <span>{label}</span>
                       <span>{item.completed}/{item.target}</span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">

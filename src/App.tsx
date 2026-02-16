@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import { AuthGate } from '@/components/auth/AuthGate'
 import { AppShell } from '@/components/layout/AppShell'
 import Today from '@/pages/Today'
+import Plans from '@/pages/Plans'
 import Progress from '@/pages/Progress'
 import Summary from '@/pages/Summary'
 
@@ -11,6 +12,7 @@ export default function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<Today />} />
+          <Route path="plans" element={<Plans />} />
           <Route path="progress" element={<Progress />} />
           <Route path="summary" element={<Summary />} />
         </Route>
