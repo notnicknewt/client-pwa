@@ -10,27 +10,31 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [exchanging, setExchanging] = useState(false)
+  const [exchanged, setExchanged] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const token = searchParams.get('token')
 
   useEffect(() => {
-    if (token && !exchanging) {
+    if (token && !exchanging && !exchanged) {
       setExchanging(true)
       exchangeToken(token)
         .then((data) => {
           login(data.jwt)
+          setExchanged(true)
+          setExchanging(false)
           // Clear token from URL before navigating
           navigate('/', { replace: true })
         })
         .catch((err) => {
           setError(err.message || 'Authentication failed')
           setExchanging(false)
+          setExchanged(true)
           // Clear token from URL on error to prevent reuse attempts
           navigate('/auth', { replace: true })
         })
     }
-  }, [token, exchanging, login, navigate])
+  }, [token, exchanging, exchanged, login, navigate])
 
   if (exchanging) {
     return (
