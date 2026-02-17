@@ -265,3 +265,90 @@ export interface ExerciseHistoryData {
   exercise_name: string
   history: ExerciseHistoryEntry[]
 }
+
+// Body measurement types
+export interface BodyMeasurement {
+  id: string
+  date: string
+  chest: number | null
+  waist: number | null
+  hips: number | null
+  left_arm: number | null
+  right_arm: number | null
+  left_thigh: number | null
+  right_thigh: number | null
+  left_calf: number | null
+  right_calf: number | null
+  neck: number | null
+  shoulders: number | null
+  created_at: string
+}
+
+export interface MeasurementsData {
+  measurements: BodyMeasurement[]
+}
+
+export interface MeasurementPayload {
+  date: string
+  chest?: number
+  waist?: number
+  hips?: number
+  left_arm?: number
+  right_arm?: number
+  left_thigh?: number
+  right_thigh?: number
+  left_calf?: number
+  right_calf?: number
+  neck?: number
+  shoulders?: number
+}
+
+// Analytics types
+export interface TopExercise {
+  exercise_id: string
+  name: string
+  count: number
+}
+
+export interface TopExercisesData {
+  exercises: TopExercise[]
+}
+
+export interface StrengthDataPoint {
+  date: string
+  e1rm: number
+}
+
+export interface StrengthProgressionData {
+  exercise_id: string
+  exercise_name: string
+  data: StrengthDataPoint[]
+}
+
+export interface VolumeDataPoint {
+  week: string
+  volume: number
+}
+
+export interface VolumeProgressionData {
+  exercise_id: string
+  exercise_name: string
+  data: VolumeDataPoint[]
+}
+
+// Progress photo types
+export interface ProgressPhoto {
+  id: string
+  contact_id: string
+  original_url: string
+  processed_url: string | null
+  photo_type: string
+  program_week: number | null
+  taken_at: string | null
+  source: string | null
+  created_at: string | null
+}
+
+export interface PhotosData {
+  photos: ProgressPhoto[]
+}

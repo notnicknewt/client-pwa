@@ -45,6 +45,32 @@ export async function apiFetch<T>(
   return res.json()
 }
 
+export async function apiUpload<T>(
+  endpoint: string,
+  formData: FormData,
+): Promise<T> {
+  const token = localStorage.getItem('client_jwt')
+  if (!token) throw new AuthError()
+
+  const res = await fetch(`${API_BASE}/api/client${endpoint}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+
+  if (res.status === 401) {
+    localStorage.removeItem('client_jwt')
+    window.location.href = '/auth'
+    throw new AuthError()
+  }
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`)
+  }
+
+  return res.json()
+}
+
 export async function exchangeToken(token: string): Promise<{ jwt: string; expires_at: string; profile: { first_name: string } }> {
   const res = await fetch(`${API_BASE}/api/client/auth`, {
     method: 'POST',
