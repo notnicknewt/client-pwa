@@ -483,6 +483,45 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
     return map
   })
 
+  // Extra foods search state
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [extraFoods, setExtraFoods] = useState<AddedFood[]>([])
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchInput), 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  const { data: searchData, isLoading: searching } = useFoodSearch(debouncedQuery)
+
+  function addExtraFood(food: FoodSearchResult) {
+    const grams = food.serving_size || 100
+    const macros = calculateMacros(food, grams)
+    setExtraFoods((prev) => [
+      ...prev,
+      { id: food.id, name: food.name, grams, calculatedMacros: macros, searchResult: food },
+    ])
+    setSearchInput('')
+    setDebouncedQuery('')
+  }
+
+  function updateExtraGrams(index: number, grams: number) {
+    setExtraFoods((prev) =>
+      prev.map((f, i) => {
+        if (i !== index) return f
+        const macros = f.searchResult
+          ? calculateMacros(f.searchResult, grams)
+          : f.calculatedMacros
+        return { ...f, grams, calculatedMacros: macros }
+      })
+    )
+  }
+
+  function removeExtraFood(index: number) {
+    setExtraFoods((prev) => prev.filter((_, i) => i !== index))
+  }
+
   function toggleFoodPlanned(index: number) {
     setFoodOverrides((prev) => {
       const next = new Map(prev)
@@ -528,6 +567,15 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
         original_food: override.substitute ? f.name : undefined,
       }
     })
+
+    // Append extra foods
+    for (const ef of extraFoods) {
+      foods.push({
+        food_name: ef.name,
+        grams_actual: ef.grams,
+        is_substitution: false,
+      })
+    }
 
     logMeal.mutate({
       date: new Date().toISOString().split('T')[0],
@@ -577,6 +625,80 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
               />
             )
           })}
+        </div>
+      )}
+
+      {/* Add extra foods */}
+      {status !== 'SKIPPED' && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Add Extra Foods</p>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search foods to add..."
+              className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+
+          {debouncedQuery.trim().length >= 2 && (
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border/50">
+              {searching && (
+                <div className="flex items-center justify-center py-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              )}
+              {searchData?.foods?.map((food) => (
+                <button
+                  key={food.id}
+                  onClick={() => addExtraFood(food)}
+                  className="w-full text-left px-3 py-2 active:bg-muted/50 transition-colors"
+                >
+                  <span className="text-sm font-medium truncate block">{food.name}</span>
+                  <p className="text-[11px] text-muted-foreground">
+                    P{food.protein_per_100g} C{food.carbs_per_100g} F{food.fat_per_100g} per 100g
+                  </p>
+                </button>
+              ))}
+              {searchData && searchData.foods?.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-3">No results found</p>
+              )}
+            </div>
+          )}
+
+          {extraFoods.length > 0 && (
+            <div className="space-y-1.5">
+              {extraFoods.map((food, i) => (
+                <div key={i} className="rounded-lg border border-border/50 p-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm truncate flex-1">{food.name}</span>
+                    <button
+                      onClick={() => removeExtraFood(i)}
+                      aria-label={`Remove ${food.name}`}
+                      className="p-1 rounded text-muted-foreground active:bg-muted transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={food.grams}
+                      onChange={(e) => updateExtraGrams(i, Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground text-center focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <span className="text-xs text-muted-foreground">g</span>
+                    <span className="text-[11px] text-muted-foreground ml-auto">
+                      P{food.calculatedMacros.protein} C{food.calculatedMacros.carbs} F{food.calculatedMacros.fat} | {food.calculatedMacros.calories}kcal
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
