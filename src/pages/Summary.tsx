@@ -2,6 +2,8 @@ import { useSummaries } from '@/hooks/use-summaries'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
+import { BarChart3 } from 'lucide-react'
 
 export default function Summary() {
   const { data, isLoading, error } = useSummaries()
@@ -17,17 +19,16 @@ export default function Summary() {
   }
 
   if (error) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <p>Unable to load weekly summaries</p>
-        <p className="text-sm mt-1">Pull down to refresh</p>
-      </div>
-    )
+    return <EmptyState icon={BarChart3} title="Unable to load summaries" description="Pull down to refresh or try again later." />
   }
 
   if (!data) return null
 
   const { summaries, program_progress } = data
+
+  if (summaries.length === 0) {
+    return <EmptyState icon={BarChart3} title="No summaries yet" description="Weekly summaries will appear here as you progress through your program." />
+  }
 
   return (
     <div className="space-y-4">
@@ -80,13 +81,6 @@ export default function Summary() {
           </CardContent>
         </Card>
       ))}
-
-      {summaries.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          <p>No weekly summaries yet.</p>
-          <p className="text-sm mt-1">Complete your first week to see progress.</p>
-        </div>
-      )}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useNutritionWeek } from '@/hooks/use-nutrition'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Dumbbell, UtensilsCrossed, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { TrainingDayPlan, NutritionDayPlan, PlannedExercise, MealPlan } from '@/lib/types'
@@ -58,8 +59,8 @@ function WorkoutWeek() {
   const today = todayDayOfWeek()
 
   if (isLoading) return <div className="space-y-3">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-16" />)}</div>
-  if (error) return <p className="text-center text-muted-foreground py-8">Unable to load workout plan</p>
-  if (!data?.available) return <p className="text-center text-muted-foreground py-8">Training plan not connected</p>
+  if (error) return <EmptyState icon={Dumbbell} title="Unable to load workout plan" description="Pull down to refresh or try again later." />
+  if (!data?.available) return <EmptyState icon={Dumbbell} title="No training plan" description="Your coach hasn't set up a training plan yet." />
 
   return (
     <div className="space-y-2">
@@ -150,8 +151,8 @@ function NutritionWeek() {
   const today = todayDayOfWeek()
 
   if (isLoading) return <div className="space-y-3">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-16" />)}</div>
-  if (error) return <p className="text-center text-muted-foreground py-8">Unable to load nutrition plan</p>
-  if (!data?.available) return <p className="text-center text-muted-foreground py-8">Nutrition plan not connected</p>
+  if (error) return <EmptyState icon={UtensilsCrossed} title="Unable to load nutrition plan" description="Pull down to refresh or try again later." />
+  if (!data?.available) return <EmptyState icon={UtensilsCrossed} title="No nutrition plan" description="Your coach hasn't set up a nutrition plan yet." />
 
   return (
     <div className="space-y-2">

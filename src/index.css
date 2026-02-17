@@ -44,3 +44,36 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Page transition animation */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-page-enter {
+  animation: page-enter 0.2s ease-out;
+}
+
+/* Pull-to-refresh indicator */
+.pull-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+
+.pull-indicator-icon {
+  transition: transform 0.2s ease;
+}
+
+.pull-indicator-icon.ready {
+  transform: rotate(180deg);
+}

@@ -1,6 +1,8 @@
 import { Routes, Route } from 'react-router-dom'
 import { AuthGate } from '@/components/auth/AuthGate'
 import { AppShell } from '@/components/layout/AppShell'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { PageTransition } from '@/components/ui/page-transition'
 import Today from '@/pages/Today'
 import Plans from '@/pages/Plans'
 import Track from '@/pages/Track'
@@ -13,12 +15,12 @@ export default function App() {
     <AuthGate>
       <Routes>
         <Route element={<AppShell />}>
-          <Route index element={<Today />} />
-          <Route path="plans" element={<Plans />} />
-          <Route path="track" element={<Track />} />
-          <Route path="track/workout" element={<TrackWorkout />} />
-          <Route path="progress" element={<Progress />} />
-          <Route path="summary" element={<Summary />} />
+          <Route index element={<ErrorBoundary><PageTransition><Today /></PageTransition></ErrorBoundary>} />
+          <Route path="plans" element={<ErrorBoundary><PageTransition><Plans /></PageTransition></ErrorBoundary>} />
+          <Route path="track" element={<ErrorBoundary><PageTransition><Track /></PageTransition></ErrorBoundary>} />
+          <Route path="track/workout" element={<ErrorBoundary><PageTransition><TrackWorkout /></PageTransition></ErrorBoundary>} />
+          <Route path="progress" element={<ErrorBoundary><PageTransition><Progress /></PageTransition></ErrorBoundary>} />
+          <Route path="summary" element={<ErrorBoundary><PageTransition><Summary /></PageTransition></ErrorBoundary>} />
         </Route>
         <Route path="auth" element={<div />} />
       </Routes>

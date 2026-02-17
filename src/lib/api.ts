@@ -7,6 +7,8 @@ class AuthError extends Error {
   }
 }
 
+const MUTATION_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE']
+
 export async function apiFetch<T>(
   endpoint: string,
   opts?: { method?: string; body?: unknown },
@@ -17,8 +19,15 @@ export async function apiFetch<T>(
   const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
   if (opts?.body) headers['Content-Type'] = 'application/json'
 
+  const method = opts?.method || 'GET'
+
+  if (!navigator.onLine && MUTATION_METHODS.includes(method)) {
+    queueMutation(endpoint, method, opts?.body ?? null)
+    return {} as T
+  }
+
   const res = await fetch(`${API_BASE}/api/client${endpoint}`, {
-    method: opts?.method || 'GET',
+    method,
     headers,
     body: opts?.body ? JSON.stringify(opts.body) : undefined,
   })
@@ -48,4 +57,78 @@ export async function exchangeToken(token: string): Promise<{ jwt: string; expir
   }
 
   return res.json()
+}
+
+// --- Offline mutation queue ---
+
+const PENDING_KEY = 'pending_mutations'
+
+interface PendingMutation {
+  endpoint: string
+  method: string
+  body: unknown
+  timestamp: number
+}
+
+export function queueMutation(endpoint: string, method: string, body: unknown) {
+  try {
+    const pending: PendingMutation[] = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]')
+    pending.push({ endpoint, method, body, timestamp: Date.now() })
+    localStorage.setItem(PENDING_KEY, JSON.stringify(pending))
+  } catch {
+    // localStorage full or unavailable - mutation will be lost
+    console.error('Failed to queue offline mutation: storage unavailable')
+  }
+}
+
+let isDraining = false
+
+export async function processPendingMutations() {
+  if (isDraining) return
+  isDraining = true
+  try {
+    const pending: PendingMutation[] = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]')
+    if (!pending.length) return
+    // Clear the queue immediately so re-queued items from offline detection
+    // during drain don't get overwritten
+    localStorage.setItem(PENDING_KEY, '[]')
+    const failed: PendingMutation[] = []
+    for (const mut of pending) {
+      if (!navigator.onLine) {
+        // Gone offline mid-drain, keep remaining items
+        failed.push(mut)
+        continue
+      }
+      try {
+        const token = localStorage.getItem('client_jwt')
+        if (!token) break
+        const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+        if (mut.body) headers['Content-Type'] = 'application/json'
+        const res = await fetch(`${API_BASE}/api/client${mut.endpoint}`, {
+          method: mut.method,
+          headers,
+          body: mut.body ? JSON.stringify(mut.body) : undefined,
+        })
+        if (!res.ok && res.status !== 401) {
+          failed.push(mut)
+        }
+      } catch {
+        failed.push(mut)
+      }
+    }
+    // Merge with any mutations that were queued during drain
+    const queuedDuringDrain: PendingMutation[] = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]')
+    localStorage.setItem(PENDING_KEY, JSON.stringify([...failed, ...queuedDuringDrain]))
+  } finally {
+    isDraining = false
+  }
+}
+
+export function getPendingMutationCount(): number {
+  try {
+    const pending: PendingMutation[] = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]')
+    return pending.length
+  } catch {
+    return 0
+  }
 }

@@ -239,3 +239,29 @@ export interface MealLogPayload {
     original_food?: string
   }[]
 }
+
+// Weight logging
+export interface WeightLogPayload {
+  date: string
+  weight: number
+  unit: string
+  source: 'pwa'
+}
+
+// Exercise history
+export interface ExerciseHistorySet {
+  set_number: number
+  weight: number
+  reps: number
+  rpe: number | null
+}
+
+export interface ExerciseHistoryEntry {
+  date: string
+  sets: ExerciseHistorySet[]
+}
+
+export interface ExerciseHistoryData {
+  exercise_name: string
+  history: ExerciseHistoryEntry[]
+}

@@ -4,8 +4,9 @@ import { useWorkoutSession, useSubmitWorkout } from '@/hooks/use-workout-trackin
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Dumbbell, Check, Clock, SkipForward, ChevronLeft, ChevronRight, Trophy } from 'lucide-react'
+import { Dumbbell, Check, Clock, SkipForward, ChevronLeft, ChevronRight, Trophy, Loader2, Pencil, Undo2, X, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ExerciseHistoryModal } from '@/components/workout/ExerciseHistoryModal'
 import type { WorkoutSessionData } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,26 @@ function matchLastSession(
   )
 }
 
+function vibrate(pattern: number | number[]) {
+  if ('vibrate' in navigator) navigator.vibrate(pattern)
+}
+
+function playTimerEndSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 880
+    osc.type = 'sine'
+    gain.gain.value = 0.3
+    osc.start()
+    osc.stop(ctx.currentTime + 0.3)
+    osc.onended = () => ctx.close()
+  } catch {}
+}
+
 function isPR(
   weight: number,
   reps: number,
@@ -98,6 +119,15 @@ export default function TrackWorkout() {
   const [repsInput, setRepsInput] = useState('')
   const [rpeInput, setRpeInput] = useState('')
 
+  // Edit/undo state
+  const [editingSetIdx, setEditingSetIdx] = useState<number | null>(null)
+  const [editWeight, setEditWeight] = useState('')
+  const [editReps, setEditReps] = useState('')
+  const [editRpe, setEditRpe] = useState('')
+
+  // Exercise history modal
+  const [historyExercise, setHistoryExercise] = useState<string | null>(null)
+
   // Initialize once data arrives
   useEffect(() => {
     if (data && phase === 'loading') {
@@ -123,22 +153,23 @@ export default function TrackWorkout() {
 
   // Rest timer countdown
   useEffect(() => {
-    if (restTimerActive && restTimeLeft > 0) {
-      restIntervalRef.current = setInterval(() => {
-        setRestTimeLeft((prev) => {
-          if (prev <= 1) {
-            setRestTimerActive(false)
-            setPhase('active')
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-    }
+    if (!restTimerActive) return
+    restIntervalRef.current = setInterval(() => {
+      setRestTimeLeft((prev) => {
+        if (prev <= 1) {
+          setRestTimerActive(false)
+          setPhase('active')
+          playTimerEndSound()
+          vibrate([200, 100, 200])
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
     return () => {
       if (restIntervalRef.current) clearInterval(restIntervalRef.current)
     }
-  }, [restTimerActive, restTimeLeft])
+  }, [restTimerActive])
 
   // Pre-fill inputs from last session when exercise or set changes
   useEffect(() => {
@@ -190,6 +221,12 @@ export default function TrackWorkout() {
       return next
     })
 
+    if (isPR(weight, reps, setsForExercise.length, lastExercise)) {
+      vibrate([100, 50, 100])
+    } else {
+      vibrate(50)
+    }
+
     const isLastSet = currentExercise
       ? setsForExercise.length + 1 >= currentExercise.sets
       : false
@@ -205,7 +242,7 @@ export default function TrackWorkout() {
       setCurrentSetIdx(setsForExercise.length + 1)
       setPhase('active')
     }
-  }, [weightInput, repsInput, rpeInput, currentExerciseIdx, currentExercise, setsForExercise])
+  }, [weightInput, repsInput, rpeInput, currentExerciseIdx, currentExercise, setsForExercise, lastExercise])
 
   const skipRest = useCallback(() => {
     setRestTimerActive(false)
@@ -275,9 +312,10 @@ export default function TrackWorkout() {
     )
   }, [data, exercises, completedSets, submitMutation])
 
-  // Auto-navigate after completion
+  // Auto-navigate after completion + haptic celebration
   useEffect(() => {
     if (phase === 'complete') {
+      vibrate([200, 100, 200, 100, 200])
       const timer = setTimeout(() => navigate('/'), 3000)
       return () => clearTimeout(timer)
     }
@@ -402,7 +440,13 @@ export default function TrackWorkout() {
                 {currentExercise.superset_group}
               </span>
             )}
-            <h2 className="text-base font-semibold">{currentExercise.name}</h2>
+            <button
+              onClick={() => setHistoryExercise(currentExercise.name)}
+              className="text-base font-semibold text-left flex items-center gap-1.5 hover:text-primary transition-colors"
+            >
+              {currentExercise.name}
+              <History className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
           </div>
           <p className="text-sm text-muted-foreground">
             Sets: {currentExercise.sets} x {repsLabel} reps
@@ -448,6 +492,72 @@ export default function TrackWorkout() {
             {/* Completed sets */}
             {setsForExercise.map((s, idx) => {
               const pr = isPR(s.weight, s.reps, idx, lastExercise)
+              const isEditing = editingSetIdx === idx
+              const isLastCompletedSet = idx === setsForExercise.length - 1
+
+              if (isEditing) {
+                return (
+                  <div key={idx} className="space-y-2 py-2 px-3 rounded-lg bg-muted/50 border border-primary/40">
+                    <span className="text-sm font-medium">Edit Set {idx + 1}</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={editWeight}
+                        onChange={(e) => setEditWeight(e.target.value)}
+                        className="w-full h-10 rounded-lg bg-muted text-center text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="kg"
+                      />
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={editReps}
+                        onChange={(e) => setEditReps(e.target.value)}
+                        className="w-full h-10 rounded-lg bg-muted text-center text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="reps"
+                      />
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={editRpe}
+                        onChange={(e) => setEditRpe(e.target.value)}
+                        min={1}
+                        max={10}
+                        className="w-full h-10 rounded-lg bg-muted text-center text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="RPE"
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setEditingSetIdx(null)}
+                        className="p-1.5 rounded-lg bg-muted"
+                      >
+                        <X className="h-4 w-4 text-muted-foreground" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          const w = parseFloat(editWeight)
+                          const r = parseInt(editReps, 10)
+                          if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) return
+                          const rpe = editRpe ? parseFloat(editRpe) : null
+                          setCompletedSets((prev) => {
+                            const next = new Map(prev)
+                            const existing = [...(next.get(currentExerciseIdx) ?? [])]
+                            existing[idx] = { weight: w, reps: r, rpe }
+                            next.set(currentExerciseIdx, existing)
+                            return next
+                          })
+                          setEditingSetIdx(null)
+                        }}
+                        className="p-1.5 rounded-lg bg-primary"
+                      >
+                        <Check className="h-4 w-4 text-primary-foreground" />
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
+
               return (
                 <div
                   key={idx}
@@ -461,7 +571,37 @@ export default function TrackWorkout() {
                     {s.weight}kg x {s.reps}
                     {s.rpe != null && ` @ ${s.rpe}`}
                   </span>
-                  {pr && <Badge variant="warning" className="ml-auto text-[10px] px-1.5 py-0">PR!</Badge>}
+                  {pr && <Badge variant="warning" className="text-[10px] px-1.5 py-0">PR!</Badge>}
+                  <div className="ml-auto flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => {
+                        setEditingSetIdx(idx)
+                        setEditWeight(String(s.weight))
+                        setEditReps(String(s.reps))
+                        setEditRpe(s.rpe != null ? String(s.rpe) : '')
+                      }}
+                      className="p-1 rounded"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
+                    {isLastCompletedSet && (
+                      <button
+                        onClick={() => {
+                          setCompletedSets((prev) => {
+                            const next = new Map(prev)
+                            const existing = [...(next.get(currentExerciseIdx) ?? [])]
+                            existing.pop()
+                            next.set(currentExerciseIdx, existing)
+                            return next
+                          })
+                          setCurrentSetIdx((prev) => Math.max(0, prev - 1))
+                        }}
+                        className="p-1 rounded"
+                      >
+                        <Undo2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -611,11 +751,12 @@ export default function TrackWorkout() {
             onClick={finishWorkout}
             disabled={submitMutation.isPending}
             className={cn(
-              'w-full py-3.5 rounded-lg text-sm font-semibold transition-colors',
+              'w-full py-3.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center',
               'bg-green-600 text-white',
               'disabled:opacity-60',
             )}
           >
+            {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Check className="h-4 w-4 mr-1.5" />}
             {submitMutation.isPending ? 'Saving...' : 'Finish Workout'}
           </button>
         )}
@@ -627,8 +768,9 @@ export default function TrackWorkout() {
           <button
             onClick={finishWorkout}
             disabled={submitMutation.isPending}
-            className="text-sm text-muted-foreground underline"
+            className="text-sm text-muted-foreground underline inline-flex items-center gap-1"
           >
+            {submitMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {submitMutation.isPending ? 'Saving...' : 'End Early'}
           </button>
         </div>
@@ -644,6 +786,12 @@ export default function TrackWorkout() {
           Back to Dashboard
         </button>
       </div>
+
+      {/* Exercise history modal */}
+      <ExerciseHistoryModal
+        exerciseName={historyExercise}
+        onClose={() => setHistoryExercise(null)}
+      />
     </div>
   )
 }

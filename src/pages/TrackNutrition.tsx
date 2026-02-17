@@ -370,6 +370,11 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
           </div>
         )}
 
+        {/* Error feedback for log-as-planned */}
+        {!isLogged && logMeal.isError && (
+          <p className="text-xs text-destructive mt-1">Failed to log meal. Tap to retry.</p>
+        )}
+
         {/* Log with changes form */}
         {!isLogged && expanded && (
           <LogWithChangesForm meal={meal} />

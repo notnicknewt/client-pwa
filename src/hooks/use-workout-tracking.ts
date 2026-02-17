@@ -20,5 +20,8 @@ export function useSubmitWorkout() {
       qc.invalidateQueries({ queryKey: ['client', 'training'] })
       qc.invalidateQueries({ queryKey: ['client', 'workout'] })
     },
+    onError: (error) => {
+      console.error('Failed to submit workout:', error)
+    },
   })
 }

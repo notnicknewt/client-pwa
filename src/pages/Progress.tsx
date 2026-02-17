@@ -1,8 +1,9 @@
-import { useWeight } from '@/hooks/use-weight'
+import { useState } from 'react'
+import { useWeight, useLogWeight } from '@/hooks/use-weight'
 import { useCompliance } from '@/hooks/use-compliance'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Flame, TrendingDown } from 'lucide-react'
+import { Flame, TrendingDown, Scale, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
@@ -19,6 +20,29 @@ const COMPLIANCE_BARS: { key: string; label: string }[] = [
 export default function Progress() {
   const { data: weight, isLoading: weightLoading, error: weightError } = useWeight()
   const { data: compliance, isLoading: complianceLoading, error: complianceError } = useCompliance()
+  const logWeight = useLogWeight()
+
+  const [showWeightLog, setShowWeightLog] = useState(false)
+  const [weightInput, setWeightInput] = useState('')
+
+  const handleWeightSubmit = () => {
+    const value = parseFloat(weightInput)
+    if (isNaN(value) || value <= 0 || value > 700) return
+    logWeight.mutate(
+      {
+        date: new Date().toISOString().split('T')[0],
+        weight: value,
+        unit: weight?.unit || 'kg',
+        source: 'pwa',
+      },
+      {
+        onSuccess: () => {
+          setShowWeightLog(false)
+          setWeightInput('')
+        },
+      },
+    )
+  }
 
   if (weightError || complianceError) {
     return (
@@ -48,6 +72,43 @@ export default function Progress() {
         </Card>
       )}
 
+      {/* Log Weight Card */}
+      <Card>
+        <button
+          className="w-full flex items-center justify-between px-4 py-3"
+          onClick={() => setShowWeightLog(v => !v)}
+        >
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Scale className="h-4 w-4" />
+            Log Weight
+          </div>
+          {showWeightLog ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        {showWeightLog && (
+          <CardContent className="pt-0 pb-4">
+            <div className="flex gap-2 items-center">
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                placeholder="Weight"
+                value={weightInput}
+                onChange={e => setWeightInput(e.target.value)}
+                className="flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span className="text-sm text-muted-foreground">{weight?.unit || 'kg'}</span>
+              <button
+                onClick={handleWeightSubmit}
+                disabled={logWeight.isPending || !weightInput}
+                className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {logWeight.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+              </button>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
       {/* Weight Chart */}
       {weightLoading ? (
         <Skeleton className="h-64" />
@@ -69,11 +130,15 @@ export default function Progress() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={weight.rolling_average.map((ra, i) => ({
-                date: new Date(ra.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
-                avg: ra.avg,
-                weight: weight.entries[i]?.weight,
-              }))}>
+              <LineChart data={(() => {
+                // Build a date-keyed map of raw weights for correct alignment
+                const entryMap = new Map(weight.entries.map(e => [e.date, e.weight]))
+                return weight.rolling_average.map((ra) => ({
+                  date: new Date(ra.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+                  avg: ra.avg,
+                  weight: entryMap.get(ra.date),
+                }))
+              })()}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(217, 33%, 17%)" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(215, 20%, 55%)' }} />
                 <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: 'hsl(215, 20%, 55%)' }} unit={weight.unit} />
@@ -97,7 +162,9 @@ export default function Progress() {
       )}
 
       {/* Compliance Heatmap */}
-      {!complianceLoading && compliance && (
+      {complianceLoading ? (
+        <Skeleton className="h-48" />
+      ) : compliance && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Activity</CardTitle>

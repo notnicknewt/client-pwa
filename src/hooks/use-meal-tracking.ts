@@ -15,7 +15,30 @@ export function useLogMeal() {
   return useMutation({
     mutationFn: (data: MealLogPayload) =>
       apiFetch('/nutrition/meal-log', { method: 'POST', body: data }),
-    onSuccess: () => {
+    onMutate: async (newMeal) => {
+      await qc.cancelQueries({ queryKey: ['client', 'meal-logs'] })
+      const previous = qc.getQueryData<MealLogsToday>(['client', 'meal-logs', 'today'])
+      if (previous) {
+        qc.setQueryData<MealLogsToday>(['client', 'meal-logs', 'today'], {
+          ...previous,
+          logged_meals: [
+            ...(previous.logged_meals || []),
+            {
+              meal_number: newMeal.meal_number,
+              status: newMeal.status,
+              adherence: newMeal.adherence,
+            },
+          ],
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        qc.setQueryData(['client', 'meal-logs', 'today'], context.previous)
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['client', 'meal-logs'] })
       qc.invalidateQueries({ queryKey: ['client', 'nutrition'] })
     },

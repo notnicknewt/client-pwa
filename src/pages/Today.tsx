@@ -6,7 +6,8 @@ import { useNutritionToday } from '@/hooks/use-nutrition'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Dumbbell, UtensilsCrossed, MessageSquare, ChevronRight, ChevronDown } from 'lucide-react'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Dumbbell, UtensilsCrossed, MessageSquare, ChevronRight, ChevronDown, Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { PlannedExercise, MealPlan } from '@/lib/types'
 
@@ -24,12 +25,7 @@ export default function Today() {
   }
 
   if (error) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <p>Unable to load today's data</p>
-        <p className="text-sm mt-1">Pull down to refresh</p>
-      </div>
-    )
+    return <EmptyState icon={Calendar} title="Unable to load today's data" description="Pull down to refresh or try again later." />
   }
 
   if (!data) return null
