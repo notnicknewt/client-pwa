@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { useToday } from '@/hooks/use-today'
 import { useTrainingToday } from '@/hooks/use-training'
 import { useNutritionToday } from '@/hooks/use-nutrition'
+import { useStartCheckin } from '@/hooks/use-checkin'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Dumbbell, UtensilsCrossed, MessageSquare, ChevronRight, ChevronDown, Calendar } from 'lucide-react'
+import { Dumbbell, UtensilsCrossed, MessageSquare, ChevronRight, ChevronDown, Calendar, Play, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { PlannedExercise, MealPlan } from '@/lib/types'
+import type { PlannedExercise, MealPlan, TodayData } from '@/lib/types'
 
 export default function Today() {
   const { data, isLoading, error } = useToday()
@@ -48,35 +49,7 @@ export default function Today() {
         totalFat={data.nutrition.total_fat}
       />
 
-      {/* Check-in Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <MessageSquare className="h-5 w-5 text-primary" />
-            Check-in
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.checkin.is_checkin_day ? (
-            <div className="flex items-center gap-2">
-              <Badge variant={data.checkin.status === 'completed' ? 'success' : 'warning'}>
-                {data.checkin.status === 'completed' ? 'Completed' : 'Due Today'}
-              </Badge>
-            </div>
-          ) : data.touchpoint?.is_touchpoint_day ? (
-            <div className="flex items-center gap-2">
-              <Badge variant={data.touchpoint.status === 'completed' ? 'success' : 'secondary'}>
-                {data.touchpoint.status === 'completed' ? 'Touchpoint Done' : 'Touchpoint Day'}
-              </Badge>
-              <span className="text-sm text-muted-foreground">Quick check-in today</span>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Next check-in: {new Date(data.checkin.next_checkin).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <CheckinCard date={data.date} checkin={data.checkin} touchpoint={data.touchpoint} />
     </div>
   )
 }
@@ -262,6 +235,98 @@ function NutritionCard({
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">Nutrition plan not connected</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Check-in Card (tappable when pending, expandable with start action)
+// ---------------------------------------------------------------------------
+
+function CheckinCard({
+  date, checkin, touchpoint,
+}: {
+  date: string
+  checkin: TodayData['checkin']
+  touchpoint: TodayData['touchpoint']
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const startCheckin = useStartCheckin()
+
+  const isPending =
+    (checkin.is_checkin_day && checkin.status === 'pending') ||
+    (touchpoint.is_touchpoint_day && touchpoint.status === 'pending')
+
+  const tappable = isPending
+
+  const handleStart = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    startCheckin.mutate(date)
+  }
+
+  return (
+    <Card
+      className={cn(
+        'transition-colors',
+        tappable && 'cursor-pointer hover:bg-accent/50',
+      )}
+      onClick={() => {
+        if (tappable) setExpanded(!expanded)
+      }}
+    >
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between text-base">
+          <span className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5 text-primary" />
+            Check-in
+          </span>
+          {tappable && (
+            <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {checkin.is_checkin_day ? (
+          <div className="flex items-center gap-2">
+            <Badge variant={checkin.status === 'completed' ? 'success' : 'warning'}>
+              {checkin.status === 'completed' ? 'Completed' : 'Due Today'}
+            </Badge>
+          </div>
+        ) : touchpoint.is_touchpoint_day ? (
+          <div className="flex items-center gap-2">
+            <Badge variant={touchpoint.status === 'completed' ? 'success' : 'secondary'}>
+              {touchpoint.status === 'completed' ? 'Touchpoint Done' : 'Touchpoint Day'}
+            </Badge>
+            <span className="text-sm text-muted-foreground">Quick check-in today</span>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Next check-in: {new Date(checkin.next_checkin).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}
+          </p>
+        )}
+
+        {expanded && isPending && (
+          <div className="mt-3 pt-3 border-t">
+            <button
+              onClick={handleStart}
+              disabled={startCheckin.isPending}
+              className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {startCheckin.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              {checkin.is_checkin_day ? 'Start Check-in' : 'Start Touchpoint'}
+            </button>
+            {startCheckin.isError && (
+              <p className="text-xs text-destructive mt-2 text-center">
+                Failed to start — try again
+              </p>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
