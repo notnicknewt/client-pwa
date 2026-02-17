@@ -77,3 +77,19 @@ body {
 .pull-indicator-icon.ready {
   transform: rotate(180deg);
 }
+
+/* Exercise slide transitions */
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+.animate-slide-left {
+  animation: slide-in-left 0.2s ease-out;
+}

@@ -1,11 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useWorkoutSession, useSubmitWorkout } from '@/hooks/use-workout-tracking'
-import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Dumbbell, Check, Clock, SkipForward, ChevronLeft, ChevronRight, Trophy, Loader2, Pencil, Undo2, X, History } from 'lucide-react'
+import { Dumbbell, Check, Clock, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useSwipeNavigation } from '@/hooks/use-swipe-navigation'
+import { ExercisePillBar } from '@/components/workout/ExercisePillBar'
+import { ExerciseTracker } from '@/components/workout/ExerciseTracker'
+import { RestTimerOverlay } from '@/components/workout/RestTimerOverlay'
+import { WorkoutComplete } from '@/components/workout/WorkoutComplete'
 import { ExerciseHistoryModal } from '@/components/workout/ExerciseHistoryModal'
 import type { WorkoutSessionData } from '@/lib/types'
 
@@ -100,9 +104,11 @@ export default function TrackWorkout() {
 
   // Core tracking state
   const [currentExerciseIdx, setCurrentExerciseIdx] = useState(0)
-  const [currentSetIdx, setCurrentSetIdx] = useState(0)
   const [completedSets, setCompletedSets] = useState<Map<number, CompletedSet[]>>(new Map())
   const [phase, setPhase] = useState<Phase>('loading')
+
+  // Navigation direction for slide animation
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null)
 
   // Rest timer
   const [restTimerActive, setRestTimerActive] = useState(false)
@@ -114,19 +120,46 @@ export default function TrackWorkout() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const elapsedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Input state for current set
-  const [weightInput, setWeightInput] = useState('')
-  const [repsInput, setRepsInput] = useState('')
-  const [rpeInput, setRpeInput] = useState('')
-
-  // Edit/undo state
-  const [editingSetIdx, setEditingSetIdx] = useState<number | null>(null)
-  const [editWeight, setEditWeight] = useState('')
-  const [editReps, setEditReps] = useState('')
-  const [editRpe, setEditRpe] = useState('')
-
   // Exercise history modal
   const [historyExercise, setHistoryExercise] = useState<string | null>(null)
+
+  const exercises = data?.exercises ?? []
+  const totalExercises = exercises.length
+  const currentExercise = exercises[currentExerciseIdx]
+  const setsForExercise = completedSets.get(currentExerciseIdx) ?? []
+
+  const lastExercise = currentExercise
+    ? matchLastSession(currentExercise.name, data?.last_session ?? null)
+    : null
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  const cancelRestTimer = useCallback(() => {
+    setRestTimerActive(false)
+    setRestTimeLeft(0)
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current)
+  }, [])
+
+  const goToExercise = useCallback((index: number) => {
+    if (index < 0 || index >= totalExercises) return
+    setSlideDirection(index > currentExerciseIdx ? 'right' : 'left')
+    if (restTimerActive) cancelRestTimer()
+    setCurrentExerciseIdx(index)
+    setPhase('active')
+  }, [totalExercises, currentExerciseIdx, restTimerActive, cancelRestTimer])
+
+  // Swipe integration
+  const { containerRef: swipeRef, swipeOffset, isSwiping } = useSwipeNavigation({
+    onSwipeLeft: () => goToExercise(currentExerciseIdx + 1),
+    onSwipeRight: () => goToExercise(currentExerciseIdx - 1),
+    enabled: phase === 'active' && !historyExercise,
+  })
+
+  // ---------------------------------------------------------------------------
+  // Effects
+  // ---------------------------------------------------------------------------
 
   // Initialize once data arrives
   useEffect(() => {
@@ -137,7 +170,7 @@ export default function TrackWorkout() {
     }
   }, [data, phase])
 
-  // Elapsed timer effect
+  // Elapsed timer
   useEffect(() => {
     if (phase === 'active' || phase === 'resting') {
       elapsedIntervalRef.current = setInterval(() => {
@@ -171,49 +204,20 @@ export default function TrackWorkout() {
     }
   }, [restTimerActive])
 
-  // Pre-fill inputs from last session when exercise or set changes
+  // Auto-navigate after completion + haptic celebration
   useEffect(() => {
-    if (!data) return
-    const exercise = data.exercises[currentExerciseIdx]
-    if (!exercise) return
-    const last = matchLastSession(exercise.name, data.last_session)
-    if (last) {
-      const lastSet = last.sets.find((s) => s.set_number === currentSetIdx + 1)
-      if (lastSet) {
-        setWeightInput(String(lastSet.weight))
-        setRepsInput(String(lastSet.reps))
-        setRpeInput(lastSet.rpe != null ? String(lastSet.rpe) : '')
-        return
-      }
+    if (phase === 'complete') {
+      vibrate([200, 100, 200, 100, 200])
+      const timer = setTimeout(() => navigate('/'), 3000)
+      return () => clearTimeout(timer)
     }
-    setWeightInput('')
-    setRepsInput('')
-    setRpeInput('')
-  }, [currentExerciseIdx, currentSetIdx, data])
+  }, [phase, navigate])
 
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
 
-  const exercises = data?.exercises ?? []
-  const currentExercise = exercises[currentExerciseIdx]
-  const totalExercises = exercises.length
-  const setsForExercise = completedSets.get(currentExerciseIdx) ?? []
-  const allSetsForExerciseDone = currentExercise
-    ? setsForExercise.length >= currentExercise.sets
-    : false
-  const isLastExercise = currentExerciseIdx === totalExercises - 1
-  const lastExercise = currentExercise
-    ? matchLastSession(currentExercise.name, data?.last_session ?? null)
-    : null
-
-  const logSet = useCallback(() => {
-    const weight = parseFloat(weightInput)
-    const reps = parseInt(repsInput, 10)
-    if (isNaN(weight) || isNaN(reps) || weight <= 0 || reps <= 0) return
-    const rpe = rpeInput ? parseFloat(rpeInput) : null
-
-    const newSet: CompletedSet = { weight, reps, rpe }
+  const logSet = useCallback((newSet: CompletedSet) => {
     setCompletedSets((prev) => {
       const next = new Map(prev)
       const existing = next.get(currentExerciseIdx) ?? []
@@ -221,7 +225,7 @@ export default function TrackWorkout() {
       return next
     })
 
-    if (isPR(weight, reps, setsForExercise.length, lastExercise)) {
+    if (isPR(newSet.weight, newSet.reps, setsForExercise.length, lastExercise)) {
       vibrate([100, 50, 100])
     } else {
       vibrate(50)
@@ -232,50 +236,56 @@ export default function TrackWorkout() {
       : false
 
     if (!isLastSet && currentExercise) {
-      // Start rest timer
-      setCurrentSetIdx(setsForExercise.length + 1)
       setRestTimeLeft(currentExercise.rest_seconds)
       setRestTimerActive(true)
       setPhase('resting')
     } else {
-      // All sets done for this exercise
-      setCurrentSetIdx(setsForExercise.length + 1)
       setPhase('active')
     }
-  }, [weightInput, repsInput, rpeInput, currentExerciseIdx, currentExercise, setsForExercise, lastExercise])
+  }, [currentExerciseIdx, currentExercise, setsForExercise, lastExercise])
+
+  const editSet = useCallback((setIdx: number, updatedSet: CompletedSet) => {
+    setCompletedSets((prev) => {
+      const next = new Map(prev)
+      const existing = [...(next.get(currentExerciseIdx) ?? [])]
+      existing[setIdx] = updatedSet
+      next.set(currentExerciseIdx, existing)
+      return next
+    })
+  }, [currentExerciseIdx])
+
+  const undoLastSet = useCallback(() => {
+    setCompletedSets((prev) => {
+      const next = new Map(prev)
+      const existing = [...(next.get(currentExerciseIdx) ?? [])]
+      existing.pop()
+      next.set(currentExerciseIdx, existing)
+      return next
+    })
+  }, [currentExerciseIdx])
 
   const skipRest = useCallback(() => {
-    setRestTimerActive(false)
-    setRestTimeLeft(0)
-    if (restIntervalRef.current) clearInterval(restIntervalRef.current)
+    cancelRestTimer()
     setPhase('active')
-  }, [])
-
-  const nextExercise = useCallback(() => {
-    if (currentExerciseIdx < totalExercises - 1) {
-      setCurrentExerciseIdx((prev) => prev + 1)
-      setCurrentSetIdx(0)
-      setPhase('active')
-    }
-  }, [currentExerciseIdx, totalExercises])
-
-  const skipExercise = useCallback(() => {
-    if (restTimerActive) {
-      setRestTimerActive(false)
-      setRestTimeLeft(0)
-      if (restIntervalRef.current) clearInterval(restIntervalRef.current)
-    }
-    nextExercise()
-  }, [nextExercise, restTimerActive])
+  }, [cancelRestTimer])
 
   const finishWorkout = useCallback(() => {
     if (!data) return
+
+    // Check for incomplete exercises
+    const incompleteCount = exercises.filter(
+      (_ex, idx) => (completedSets.get(idx) ?? []).length === 0,
+    ).length
+    if (incompleteCount > 0) {
+      if (!window.confirm(`${incompleteCount} exercise${incompleteCount > 1 ? 's have' : ' has'} no sets logged. Finish anyway?`)) {
+        return
+      }
+    }
 
     const durationMinutes = Math.round(
       (Date.now() - startTimeRef.current.getTime()) / 60000,
     )
 
-    // Build the payload
     const exercisePayloads = exercises.map((_ex, idx) => {
       const sets = (completedSets.get(idx) ?? []).map((s, sIdx) => ({
         set_number: sIdx + 1,
@@ -290,7 +300,6 @@ export default function TrackWorkout() {
       }
     }).filter((e) => e.sets.length > 0)
 
-    // Determine if all exercises had all sets completed
     const completedFully = exercises.every(
       (ex, idx) => (completedSets.get(idx) ?? []).length >= ex.sets,
     )
@@ -311,15 +320,6 @@ export default function TrackWorkout() {
       },
     )
   }, [data, exercises, completedSets, submitMutation])
-
-  // Auto-navigate after completion + haptic celebration
-  useEffect(() => {
-    if (phase === 'complete') {
-      vibrate([200, 100, 200, 100, 200])
-      const timer = setTimeout(() => navigate('/'), 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [phase, navigate])
 
   // ---------------------------------------------------------------------------
   // Render: Loading
@@ -377,33 +377,13 @@ export default function TrackWorkout() {
   // ---------------------------------------------------------------------------
 
   if (phase === 'complete') {
-    const totalSets = Array.from(completedSets.values()).reduce(
-      (acc, sets) => acc + sets.length,
-      0,
-    )
-    const totalExDone = Array.from(completedSets.entries()).filter(
-      ([, sets]) => sets.length > 0,
-    ).length
-    const duration = Math.round(
-      (Date.now() - startTimeRef.current.getTime()) / 60000,
-    )
-
     return (
-      <div
-        className="flex flex-col items-center justify-center py-16"
-        onClick={() => navigate('/')}
-      >
-        <div className="rounded-full bg-green-900/30 p-4 mb-4">
-          <Trophy className="h-10 w-10 text-green-400" />
-        </div>
-        <h2 className="text-xl font-bold mb-2">Workout Complete</h2>
-        <div className="flex gap-6 text-sm text-muted-foreground mb-6">
-          <span>{totalExDone} exercises</span>
-          <span>{totalSets} sets</span>
-          <span>{duration} min</span>
-        </div>
-        <p className="text-xs text-muted-foreground">Tap anywhere or wait to return</p>
-      </div>
+      <WorkoutComplete
+        completedSets={completedSets}
+        exercises={exercises}
+        startTime={startTimeRef.current}
+        onClose={() => navigate('/')}
+      />
     )
   }
 
@@ -411,12 +391,14 @@ export default function TrackWorkout() {
   // Render: Active workout
   // ---------------------------------------------------------------------------
 
-  const repsLabel = currentExercise.reps_max
-    ? `${currentExercise.reps_min}-${currentExercise.reps_max}`
-    : `${currentExercise.reps_min}`
+  const isFirstExercise = currentExerciseIdx === 0
+  const isLastExercise = currentExerciseIdx === totalExercises - 1
+  const allDone = exercises.every(
+    (ex, idx) => (completedSets.get(idx) ?? []).length >= ex.sets,
+  )
 
   return (
-    <div className="space-y-4 pb-24">
+    <div ref={swipeRef} className="space-y-4 pb-24">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -431,350 +413,93 @@ export default function TrackWorkout() {
         </Badge>
       </div>
 
-      {/* Current exercise name */}
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex items-center gap-2 mb-1">
-            {currentExercise.superset_group && (
-              <span className="text-xs font-bold text-primary">
-                {currentExercise.superset_group}
-              </span>
-            )}
-            <button
-              onClick={() => setHistoryExercise(currentExercise.name)}
-              className="text-base font-semibold text-left flex items-center gap-1.5 hover:text-primary transition-colors"
-            >
-              {currentExercise.name}
-              <History className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
+      {/* Exercise pill bar */}
+      <ExercisePillBar
+        exercises={exercises}
+        currentIndex={currentExerciseIdx}
+        completedSets={completedSets}
+        onSelect={goToExercise}
+      />
+
+      {/* Main content with swipe offset */}
+      <div
+        className={cn(
+          slideDirection === 'right' && !isSwiping && 'animate-slide-right',
+          slideDirection === 'left' && !isSwiping && 'animate-slide-left',
+        )}
+        style={isSwiping ? { transform: `translateX(${swipeOffset}px)`, transition: 'none' } : undefined}
+        onAnimationEnd={() => setSlideDirection(null)}
+      >
+        {/* Rest timer */}
+        {phase === 'resting' && (
+          <div className="mb-4">
+            <RestTimerOverlay restTimeLeft={restTimeLeft} onSkipRest={skipRest} />
           </div>
-          <p className="text-sm text-muted-foreground">
-            Sets: {currentExercise.sets} x {repsLabel} reps
-            {currentExercise.rpe_target != null && ` @ RPE ${currentExercise.rpe_target}`}
-          </p>
-          {currentExercise.tempo && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Tempo: {currentExercise.tempo}
-            </p>
-          )}
-          {currentExercise.notes && (
-            <p className="text-xs text-muted-foreground mt-0.5 italic">
-              {currentExercise.notes}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Rest timer overlay */}
-      {phase === 'resting' && (
-        <Card className="border-primary/50">
-          <CardContent className="pt-4 text-center">
-            <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">
-              Rest
-            </p>
-            <p className="text-5xl font-bold tabular-nums mb-4">
-              {formatElapsed(restTimeLeft)}
-            </p>
-            <button
-              onClick={skipRest}
-              className="px-6 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium"
-            >
-              Skip Rest
-            </button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Set inputs */}
-      {phase === 'active' && (
-        <Card>
-          <CardContent className="pt-4 space-y-3">
-            {/* Completed sets */}
-            {setsForExercise.map((s, idx) => {
-              const pr = isPR(s.weight, s.reps, idx, lastExercise)
-              const isEditing = editingSetIdx === idx
-              const isLastCompletedSet = idx === setsForExercise.length - 1
-
-              if (isEditing) {
-                return (
-                  <div key={idx} className="space-y-2 py-2 px-3 rounded-lg bg-muted/50 border border-primary/40">
-                    <span className="text-sm font-medium">Edit Set {idx + 1}</span>
-                    <div className="grid grid-cols-3 gap-2">
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        value={editWeight}
-                        onChange={(e) => setEditWeight(e.target.value)}
-                        className="w-full h-10 rounded-lg bg-muted text-center text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="kg"
-                      />
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        value={editReps}
-                        onChange={(e) => setEditReps(e.target.value)}
-                        className="w-full h-10 rounded-lg bg-muted text-center text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="reps"
-                      />
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        value={editRpe}
-                        onChange={(e) => setEditRpe(e.target.value)}
-                        min={1}
-                        max={10}
-                        className="w-full h-10 rounded-lg bg-muted text-center text-sm font-semibold outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="RPE"
-                      />
-                    </div>
-                    <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={() => setEditingSetIdx(null)}
-                        className="p-1.5 rounded-lg bg-muted"
-                      >
-                        <X className="h-4 w-4 text-muted-foreground" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          const w = parseFloat(editWeight)
-                          const r = parseInt(editReps, 10)
-                          if (isNaN(w) || isNaN(r) || w <= 0 || r <= 0) return
-                          const rpe = editRpe ? parseFloat(editRpe) : null
-                          setCompletedSets((prev) => {
-                            const next = new Map(prev)
-                            const existing = [...(next.get(currentExerciseIdx) ?? [])]
-                            existing[idx] = { weight: w, reps: r, rpe }
-                            next.set(currentExerciseIdx, existing)
-                            return next
-                          })
-                          setEditingSetIdx(null)
-                        }}
-                        className="p-1.5 rounded-lg bg-primary"
-                      >
-                        <Check className="h-4 w-4 text-primary-foreground" />
-                      </button>
-                    </div>
-                  </div>
-                )
-              }
-
-              return (
-                <div
-                  key={idx}
-                  className="flex items-center gap-3 py-2 px-3 rounded-lg bg-muted/50"
-                >
-                  <Check className="h-4 w-4 text-green-400 shrink-0" />
-                  <span className="text-sm font-medium min-w-[4ch]">
-                    Set {idx + 1}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    {s.weight}kg x {s.reps}
-                    {s.rpe != null && ` @ ${s.rpe}`}
-                  </span>
-                  {pr && <Badge variant="warning" className="text-[10px] px-1.5 py-0">PR!</Badge>}
-                  <div className="ml-auto flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => {
-                        setEditingSetIdx(idx)
-                        setEditWeight(String(s.weight))
-                        setEditReps(String(s.reps))
-                        setEditRpe(s.rpe != null ? String(s.rpe) : '')
-                      }}
-                      className="p-1 rounded"
-                    >
-                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                    {isLastCompletedSet && (
-                      <button
-                        onClick={() => {
-                          setCompletedSets((prev) => {
-                            const next = new Map(prev)
-                            const existing = [...(next.get(currentExerciseIdx) ?? [])]
-                            existing.pop()
-                            next.set(currentExerciseIdx, existing)
-                            return next
-                          })
-                          setCurrentSetIdx((prev) => Math.max(0, prev - 1))
-                        }}
-                        className="p-1 rounded"
-                      >
-                        <Undo2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-
-            {/* Current set input (only if sets remain) */}
-            {!allSetsForExerciseDone && (
-              <div className="space-y-3">
-                <p className="text-sm font-medium">
-                  Set {currentSetIdx + 1} of {currentExercise.sets}
-                </p>
-
-                {/* Last session reference */}
-                {lastExercise && (() => {
-                  const lastSet = lastExercise.sets.find(
-                    (s) => s.set_number === currentSetIdx + 1,
-                  )
-                  return lastSet ? (
-                    <p className="text-xs text-muted-foreground">
-                      Last: {lastSet.weight}kg x {lastSet.reps}
-                      {lastSet.rpe != null && ` @ RPE ${lastSet.rpe}`}
-                    </p>
-                  ) : null
-                })()}
-
-                {/* Input row */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">
-                      Weight (kg)
-                    </label>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      value={weightInput}
-                      onChange={(e) => setWeightInput(e.target.value)}
-                      className="w-full h-12 rounded-lg bg-muted text-center text-lg font-semibold outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">
-                      Reps
-                    </label>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={repsInput}
-                      onChange={(e) => setRepsInput(e.target.value)}
-                      className="w-full h-12 rounded-lg bg-muted text-center text-lg font-semibold outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">
-                      RPE
-                    </label>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={rpeInput}
-                      onChange={(e) => setRpeInput(e.target.value)}
-                      min={1}
-                      max={10}
-                      className="w-full h-12 rounded-lg bg-muted text-center text-lg font-semibold outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="-"
-                    />
-                  </div>
-                </div>
-
-                {/* PR preview */}
-                {(() => {
-                  const w = parseFloat(weightInput)
-                  const r = parseInt(repsInput, 10)
-                  if (!isNaN(w) && !isNaN(r) && w > 0 && r > 0) {
-                    if (isPR(w, r, currentSetIdx, lastExercise)) {
-                      return (
-                        <div className="text-center">
-                          <Badge variant="warning" className="text-xs">
-                            PR! Beat your last session
-                          </Badge>
-                        </div>
-                      )
-                    }
-                  }
-                  return null
-                })()}
-
-                {/* Log set button */}
-                <button
-                  onClick={logSet}
-                  disabled={
-                    !weightInput ||
-                    !repsInput ||
-                    parseFloat(weightInput) <= 0 ||
-                    parseInt(repsInput, 10) <= 0
-                  }
-                  className={cn(
-                    'w-full py-3.5 rounded-lg text-sm font-semibold transition-colors',
-                    'bg-primary text-primary-foreground',
-                    'disabled:opacity-40 disabled:cursor-not-allowed',
-                  )}
-                >
-                  Log Set
-                </button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Navigation buttons */}
-      <div className="flex items-center justify-between gap-3">
-        {!allSetsForExerciseDone && !isLastExercise && phase === 'active' && (
-          <button
-            onClick={skipExercise}
-            className="flex items-center gap-1 text-sm text-muted-foreground"
-          >
-            <SkipForward className="h-3.5 w-3.5" />
-            Skip Exercise
-          </button>
         )}
 
-        {allSetsForExerciseDone && !isLastExercise && phase === 'active' && (
-          <>
-            <button
-              onClick={skipExercise}
-              className="flex items-center gap-1 text-sm text-muted-foreground"
-            >
-              <SkipForward className="h-3.5 w-3.5" />
-              Skip
-            </button>
-            <button
-              onClick={nextExercise}
-              className={cn(
-                'flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold',
-                'bg-primary text-primary-foreground',
-              )}
-            >
-              Next Exercise
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </>
-        )}
-
-        {allSetsForExerciseDone && isLastExercise && phase === 'active' && (
-          <button
-            onClick={finishWorkout}
-            disabled={submitMutation.isPending}
-            className={cn(
-              'w-full py-3.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center',
-              'bg-green-600 text-white',
-              'disabled:opacity-60',
-            )}
-          >
-            {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Check className="h-4 w-4 mr-1.5" />}
-            {submitMutation.isPending ? 'Saving...' : 'Finish Workout'}
-          </button>
-        )}
+        {/* Exercise tracker */}
+        <div className="space-y-4">
+          <ExerciseTracker
+            key={currentExerciseIdx}
+            exercise={currentExercise}
+            completedSets={setsForExercise}
+            lastSessionExercise={lastExercise}
+            onLogSet={logSet}
+            onEditSet={editSet}
+            onUndoLastSet={undoLastSet}
+            onOpenHistory={setHistoryExercise}
+          />
+        </div>
       </div>
 
-      {/* End early button (always available when not on last exercise with all sets done) */}
-      {!(allSetsForExerciseDone && isLastExercise) && phase !== 'resting' && (
-        <div className="text-center pt-2">
+      {/* Navigation: [Prev] [Finish] [Next] */}
+      <div className="flex items-center gap-3">
+        {/* Prev button */}
+        {!isFirstExercise ? (
           <button
-            onClick={finishWorkout}
-            disabled={submitMutation.isPending}
-            className="text-sm text-muted-foreground underline inline-flex items-center gap-1"
+            onClick={() => goToExercise(currentExerciseIdx - 1)}
+            className="flex items-center gap-1 px-3 py-2.5 rounded-lg text-sm font-medium bg-secondary text-secondary-foreground"
           >
-            {submitMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {submitMutation.isPending ? 'Saving...' : 'End Early'}
+            <ChevronLeft className="h-4 w-4" />
+            Prev
           </button>
-        </div>
-      )}
+        ) : (
+          <div className="w-[72px]" />
+        )}
+
+        {/* Finish workout */}
+        <button
+          onClick={finishWorkout}
+          disabled={submitMutation.isPending}
+          className={cn(
+            'flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center',
+            allDone
+              ? 'bg-green-600 text-white'
+              : 'bg-secondary text-secondary-foreground',
+            'disabled:opacity-60',
+          )}
+        >
+          {submitMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+          ) : (
+            <Check className="h-4 w-4 mr-1.5" />
+          )}
+          {submitMutation.isPending ? 'Saving...' : 'Finish Workout'}
+        </button>
+
+        {/* Next button */}
+        {!isLastExercise ? (
+          <button
+            onClick={() => goToExercise(currentExerciseIdx + 1)}
+            className="flex items-center gap-1 px-3 py-2.5 rounded-lg text-sm font-medium bg-secondary text-secondary-foreground"
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        ) : (
+          <div className="w-[72px]" />
+        )}
+      </div>
 
       {/* Back button */}
       <div className="text-center">
