@@ -11,7 +11,7 @@ export default defineConfig({
       includeAssets: ['icons/*.png'],
       manifest: {
         name: 'Nick Newton Coaching',
-        short_name: 'Coaching',
+        short_name: 'NN Coaching',
         description: 'Your coaching dashboard',
         theme_color: '#0a0f1a',
         background_color: '#0a0f1a',
