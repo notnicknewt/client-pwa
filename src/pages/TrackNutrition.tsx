@@ -14,7 +14,7 @@ import type { MealPlan, MealFood, NutritionTodayData, FoodSearchResult } from '@
 // Types local to this page
 // ---------------------------------------------------------------------------
 
-type MealStatus = 'COMPLETED' | 'MODIFIED' | 'SKIPPED' | 'PARTIAL'
+type MealStatus = 'COMPLETED' | 'MODIFIED' | 'SKIPPED' | 'PARTIAL' | 'CUSTOM'
 
 interface LoggedMeal {
   meal_number: number
@@ -605,6 +605,7 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
           <option value="MODIFIED">Modified</option>
           <option value="SKIPPED">Skipped</option>
           <option value="PARTIAL">Partial</option>
+          <option value="CUSTOM">Custom</option>
         </select>
       </div>
 
