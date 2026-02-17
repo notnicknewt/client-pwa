@@ -144,6 +144,20 @@ export interface MealPlan {
   foods: MealFood[]
 }
 
+export interface FoodSearchResult {
+  id: string
+  name: string
+  uk_name: string | null
+  category: string
+  protein_per_100g: number
+  carbs_per_100g: number
+  fat_per_100g: number
+  calories_per_100g: number
+  cook_ratio: number
+  serving_size: number | null
+  serving_unit: string | null
+}
+
 export interface NutritionTodayData {
   available: boolean
   day_type: string | null
@@ -152,6 +166,7 @@ export interface NutritionTodayData {
   total_fat: number
   total_calories: number
   meals: MealPlan[]
+  meals_per_day?: number
 }
 
 export interface NutritionDayPlan {
@@ -206,9 +221,23 @@ export interface WorkoutLogPayload {
 export interface MealLogsToday {
   date: string
   logged_meals: {
+    id?: string
     meal_number: number
+    meal_label?: string
     status: string
-    adherence: number
+    adherence: number | null
+    notes?: string | null
+    source?: string
+    foods?: {
+      food_name: string
+      grams_actual: number | null
+      is_substitution: boolean
+      original_food: string | null
+      protein: number | null
+      carbs: number | null
+      fat: number | null
+      calories: number | null
+    }[]
   }[]
   daily_totals: {
     protein_consumed: number
@@ -237,6 +266,11 @@ export interface MealLogPayload {
     grams_actual: number
     is_substitution: boolean
     original_food?: string
+    food_id?: string
+    protein?: number
+    carbs?: number
+    fat?: number
+    calories?: number
   }[]
 }
 

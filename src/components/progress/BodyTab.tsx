@@ -43,7 +43,7 @@ export default function BodyTab() {
     for (const f of MEASUREMENT_FIELDS) {
       const val = parseFloat(fields[f.key] || '')
       if (!isNaN(val) && val > 0 && val <= 300) {
-        (payload as Record<string, unknown>)[f.key] = val
+        (payload as unknown as Record<string, unknown>)[f.key] = val
         hasValue = true
       }
     }

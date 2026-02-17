@@ -19,6 +19,18 @@ export function useLogMeal() {
       await qc.cancelQueries({ queryKey: ['client', 'meal-logs'] })
       const previous = qc.getQueryData<MealLogsToday>(['client', 'meal-logs', 'today'])
       if (previous) {
+        // Sum macros from food entries if available
+        let addedProtein = 0, addedCarbs = 0, addedFat = 0, addedCalories = 0
+        const hasFoodMacros = newMeal.foods.some((f) => f.protein != null)
+        if (hasFoodMacros) {
+          for (const f of newMeal.foods) {
+            addedProtein += f.protein ?? 0
+            addedCarbs += f.carbs ?? 0
+            addedFat += f.fat ?? 0
+            addedCalories += f.calories ?? 0
+          }
+        }
+
         qc.setQueryData<MealLogsToday>(['client', 'meal-logs', 'today'], {
           ...previous,
           logged_meals: [
@@ -29,6 +41,12 @@ export function useLogMeal() {
               adherence: newMeal.adherence,
             },
           ],
+          daily_totals: hasFoodMacros ? {
+            protein_consumed: (previous.daily_totals?.protein_consumed ?? 0) + addedProtein,
+            carbs_consumed: (previous.daily_totals?.carbs_consumed ?? 0) + addedCarbs,
+            fat_consumed: (previous.daily_totals?.fat_consumed ?? 0) + addedFat,
+            calories_consumed: (previous.daily_totals?.calories_consumed ?? 0) + addedCalories,
+          } : previous.daily_totals,
         })
       }
       return { previous }
