@@ -18,6 +18,7 @@ type MealStatus = 'COMPLETED' | 'MODIFIED' | 'SKIPPED' | 'PARTIAL'
 
 interface LoggedMeal {
   meal_number: number
+  meal_label?: string
   status: string
   adherence: number | null
 }
@@ -36,6 +37,17 @@ interface FoodEntry {
 export default function TrackNutrition() {
   const { data: plan, isLoading: planLoading, error: planError } = useNutritionToday()
   const { data: logs, isLoading: logsLoading, error: logsError } = useMealLogsToday()
+  const [extraMeals, setExtraMeals] = useState<number[]>([])
+
+  // Prune extra meals that have been logged (after refetch)
+  useEffect(() => {
+    if (!logs?.logged_meals?.length) return
+    const loggedSet = new Set(logs.logged_meals.map((lm) => lm.meal_number))
+    setExtraMeals((prev) => {
+      const pruned = prev.filter((n) => !loggedSet.has(n))
+      return pruned.length === prev.length ? prev : pruned
+    })
+  }, [logs])
 
   const isLoading = planLoading || logsLoading
   const error = planError || logsError
@@ -105,6 +117,17 @@ export default function TrackNutrition() {
     .filter((m) => loggedMap.has(m.meal_number))
     .sort((a, b) => a.meal_number - b.meal_number)
 
+  // Ad-hoc extra meals
+  const plannedNumberSet = new Set(plan.meals.map((m) => m.meal_number))
+  const pendingExtras = extraMeals.filter((n) => !loggedMap.has(n))
+  const loggedExtras = Array.from(loggedMap.keys())
+    .filter((n) => !plannedNumberSet.has(n))
+    .sort((a, b) => a - b)
+
+  // Stable references for the add-meal handler (won't change between rapid clicks)
+  const plannedNumbers = plan.meals.map((m) => m.meal_number)
+  const loggedNumbers = Array.from(loggedMap.keys())
+
   return (
     <div className="space-y-4">
       {/* Daily macro progress */}
@@ -124,8 +147,31 @@ export default function TrackNutrition() {
         <MealCard key={meal.meal_number} meal={meal} logged={null} />
       ))}
 
+      {/* Extra ad-hoc meal cards */}
+      {pendingExtras.map((num) => (
+        <FreeMealCard
+          key={`extra-${num}`}
+          mealNumber={num}
+          mealLabel={`Meal ${num}`}
+          onRemove={() => setExtraMeals((prev) => prev.filter((n) => n !== num))}
+        />
+      ))}
+
+      {/* Add Meal button */}
+      <button
+        onClick={() => setExtraMeals((prev) => {
+          const all = [...plannedNumbers, ...loggedNumbers, ...prev]
+          const next = all.reduce((max, n) => (n > max ? n : max), 0) + 1
+          return [...prev, next]
+        })}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-border text-sm font-medium text-muted-foreground active:bg-muted/50 transition-colors"
+      >
+        <Plus className="h-4 w-4" />
+        Add Meal
+      </button>
+
       {/* Logged meals (de-emphasized) */}
-      {loggedMeals.length > 0 && (
+      {(loggedMeals.length > 0 || loggedExtras.length > 0) && (
         <div className="space-y-2 opacity-60">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
             Logged
@@ -137,6 +183,21 @@ export default function TrackNutrition() {
               logged={loggedMap.get(meal.meal_number)!}
             />
           ))}
+          {loggedExtras.map((num) => {
+            const log = loggedMap.get(num)
+            return (
+              <Card key={`extra-logged-${num}`} className="border-border/50">
+                <CardHeader className="py-3 px-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">
+                      {log?.meal_label || `Meal ${num}`}
+                    </span>
+                    <Badge variant="success" className="text-xs">Logged</Badge>
+                  </div>
+                </CardHeader>
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>
@@ -690,9 +751,11 @@ interface AddedFood {
 function FreeMealCard({
   mealNumber,
   mealLabel,
+  onRemove,
 }: {
   mealNumber: number
   mealLabel: string
+  onRemove?: () => void
 }) {
   const logMeal = useLogMeal()
   const [expanded, setExpanded] = useState(false)
@@ -830,13 +893,24 @@ function FreeMealCard({
         <CardHeader className="py-3 px-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">{mealLabel}</span>
-            <button
-              onClick={() => setExpanded(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground active:bg-primary/80 transition-colors"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Foods
-            </button>
+            <div className="flex items-center gap-2">
+              {onRemove && (
+                <button
+                  onClick={onRemove}
+                  className="p-1.5 rounded-lg text-muted-foreground active:bg-muted transition-colors"
+                  aria-label="Remove meal"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                onClick={() => setExpanded(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground active:bg-primary/80 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Foods
+              </button>
+            </div>
           </div>
         </CardHeader>
       </Card>
@@ -848,12 +922,23 @@ function FreeMealCard({
       <CardHeader className="py-3 px-4">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">{mealLabel}</span>
-          <button
-            onClick={() => setExpanded(false)}
-            className="p-1.5 rounded-lg text-muted-foreground active:bg-muted transition-colors"
-          >
-            <ChevronDown className="h-4 w-4 rotate-180" />
-          </button>
+          <div className="flex items-center gap-1">
+            {onRemove && (
+              <button
+                onClick={onRemove}
+                className="p-1.5 rounded-lg text-muted-foreground active:bg-muted transition-colors"
+                aria-label="Remove meal"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              onClick={() => setExpanded(false)}
+              className="p-1.5 rounded-lg text-muted-foreground active:bg-muted transition-colors"
+            >
+              <ChevronDown className="h-4 w-4 rotate-180" />
+            </button>
+          </div>
         </div>
       </CardHeader>
 
