@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Dumbbell, UtensilsCrossed, MessageSquare, ChevronRight, ChevronDown, Calendar, Play, Loader2 } from 'lucide-react'
+import { Dumbbell, UtensilsCrossed, MessageSquare, MessageCircle, ChevronRight, ChevronDown, Calendar, Play, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { PlannedExercise, MealPlan, TodayData } from '@/lib/types'
 
@@ -49,7 +49,8 @@ export default function Today() {
         totalFat={data.nutrition.total_fat}
       />
 
-      <CheckinCard date={data.date} checkin={data.checkin} touchpoint={data.touchpoint} />
+      <TouchpointCard date={data.date} touchpoint={data.touchpoint} />
+      <CheckinCard date={data.date} checkin={data.checkin} />
     </div>
   )
 }
@@ -242,23 +243,98 @@ function NutritionCard({
 }
 
 // ---------------------------------------------------------------------------
-// Check-in Card (tappable when pending, expandable with start action)
+// Touchpoint Card (always visible, tappable when pending)
 // ---------------------------------------------------------------------------
 
-function CheckinCard({
-  date, checkin, touchpoint,
+function TouchpointCard({
+  date, touchpoint,
 }: {
   date: string
-  checkin: TodayData['checkin']
   touchpoint: TodayData['touchpoint']
 }) {
   const [expanded, setExpanded] = useState(false)
   const startCheckin = useStartCheckin()
 
-  const isPending =
-    (checkin.is_checkin_day && checkin.status === 'pending') ||
-    (touchpoint.is_touchpoint_day && touchpoint.status === 'pending')
+  const isPending = touchpoint.is_touchpoint_day && touchpoint.status === 'pending'
+  const tappable = isPending
 
+  const handleStart = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    startCheckin.mutate(date)
+  }
+
+  return (
+    <Card
+      className={cn(
+        'transition-colors',
+        tappable && 'cursor-pointer hover:bg-accent/50',
+      )}
+      onClick={() => {
+        if (tappable) setExpanded(!expanded)
+      }}
+    >
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between text-base">
+          <span className="flex items-center gap-2">
+            <MessageCircle className="h-5 w-5 text-primary" />
+            Touchpoint
+          </span>
+          {tappable && (
+            <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {touchpoint.is_touchpoint_day ? (
+          <div className="flex items-center gap-2">
+            <Badge variant={touchpoint.status === 'completed' ? 'success' : 'warning'}>
+              {touchpoint.status === 'completed' ? 'Done' : 'Due Today'}
+            </Badge>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No touchpoint today</p>
+        )}
+
+        {expanded && isPending && (
+          <div className="mt-3 pt-3 border-t">
+            <button
+              onClick={handleStart}
+              disabled={startCheckin.isPending}
+              className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {startCheckin.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              Start Touchpoint
+            </button>
+            {startCheckin.isError && (
+              <p className="text-xs text-destructive mt-2 text-center">
+                Failed to start — try again
+              </p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Check-in Card (tappable when pending, expandable with start action)
+// ---------------------------------------------------------------------------
+
+function CheckinCard({
+  date, checkin,
+}: {
+  date: string
+  checkin: TodayData['checkin']
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const startCheckin = useStartCheckin()
+
+  const isPending = checkin.is_checkin_day && checkin.status === 'pending'
   const tappable = isPending
 
   const handleStart = (e: React.MouseEvent) => {
@@ -294,13 +370,6 @@ function CheckinCard({
               {checkin.status === 'completed' ? 'Completed' : 'Due Today'}
             </Badge>
           </div>
-        ) : touchpoint.is_touchpoint_day ? (
-          <div className="flex items-center gap-2">
-            <Badge variant={touchpoint.status === 'completed' ? 'success' : 'secondary'}>
-              {touchpoint.status === 'completed' ? 'Touchpoint Done' : 'Touchpoint Day'}
-            </Badge>
-            <span className="text-sm text-muted-foreground">Quick check-in today</span>
-          </div>
         ) : (
           <p className="text-sm text-muted-foreground">
             Next check-in: {new Date(checkin.next_checkin).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}
@@ -319,7 +388,7 @@ function CheckinCard({
               ) : (
                 <Play className="h-4 w-4" />
               )}
-              {checkin.is_checkin_day ? 'Start Check-in' : 'Start Touchpoint'}
+              Start Check-in
             </button>
             {startCheckin.isError && (
               <p className="text-xs text-destructive mt-2 text-center">
