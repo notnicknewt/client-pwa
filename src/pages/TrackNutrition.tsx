@@ -28,6 +28,11 @@ interface FoodEntry {
   grams_actual: number
   is_substitution: boolean
   original_food?: string
+  food_id?: string
+  protein?: number
+  carbs?: number
+  fat?: number
+  calories?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -624,12 +629,17 @@ function LogWithChangesForm({ meal, editing, onEditDone }: { meal: MealPlan; edi
       }
     })
 
-    // Append extra foods
+    // Append extra foods with macros
     for (const ef of extraFoods) {
       foods.push({
         food_name: ef.name,
         grams_actual: ef.grams,
         is_substitution: false,
+        food_id: ef.id,
+        protein: ef.calculatedMacros.protein,
+        carbs: ef.calculatedMacros.carbs,
+        fat: ef.calculatedMacros.fat,
+        calories: ef.calculatedMacros.calories,
       })
     }
 
