@@ -39,16 +39,6 @@ export default function TrackNutrition() {
   const { data: logs, isLoading: logsLoading, error: logsError } = useMealLogsToday()
   const [extraMeals, setExtraMeals] = useState<number[]>([])
 
-  // Prune extra meals that have been logged (after refetch)
-  useEffect(() => {
-    if (!logs?.logged_meals?.length) return
-    const loggedSet = new Set(logs.logged_meals.map((lm) => lm.meal_number))
-    setExtraMeals((prev) => {
-      const pruned = prev.filter((n) => !loggedSet.has(n))
-      return pruned.length === prev.length ? prev : pruned
-    })
-  }, [logs])
-
   const isLoading = planLoading || logsLoading
   const error = planError || logsError
 
@@ -190,6 +180,7 @@ export default function TrackNutrition() {
                 key={`extra-logged-${num}`}
                 mealNumber={num}
                 mealLabel={log?.meal_label || `Meal ${num}`}
+                onUndo={() => setExtraMeals((prev) => prev.includes(num) ? prev : [...prev, num])}
               />
             )
           })}
@@ -1090,11 +1081,12 @@ function FreeMealSlots({
 // Logged Extra Card (with Undo)
 // ---------------------------------------------------------------------------
 
-function LoggedExtraCard({ mealNumber, mealLabel }: { mealNumber: number; mealLabel: string }) {
+function LoggedExtraCard({ mealNumber, mealLabel, onUndo }: { mealNumber: number; mealLabel: string; onUndo?: () => void }) {
   const deleteMealLog = useDeleteMealLog()
 
   function handleUndo() {
     if (deleteMealLog.isPending) return
+    onUndo?.()
     deleteMealLog.mutate({
       date: new Date().toISOString().split('T')[0],
       meal_number: mealNumber,
