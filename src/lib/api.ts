@@ -39,7 +39,8 @@ export async function apiFetch<T>(
   }
 
   if (!res.ok) {
-    throw new Error(`API error: ${res.status}`)
+    const text = await res.text().catch(() => '')
+    throw new Error(`API ${res.status}: ${text.slice(0, 200)}`)
   }
 
   return res.json()

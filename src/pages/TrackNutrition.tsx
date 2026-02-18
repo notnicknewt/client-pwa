@@ -314,6 +314,7 @@ function MacroProgressBar({
 
 function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null }) {
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
   const logMeal = useLogMeal()
   const deleteMealLog = useDeleteMealLog()
   const [loggingAsPlanned, setLoggingAsPlanned] = useState(false)
@@ -472,21 +473,20 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
           <LogWithChangesForm meal={meal} />
         )}
 
+        {/* Edit form for logged meals */}
+        {editing && isLogged && (
+          <LogWithChangesForm meal={meal} editing onEditDone={() => setEditing(false)} />
+        )}
+
         {/* Edit / Undo buttons for logged meals */}
         {isLogged && (
           <div className="mt-2 space-y-1.5">
             <div className="flex gap-2">
               <button
-                onClick={() => {
-                  handleUndo()
-                  // Open changes form once meal returns to pending
-                  setExpanded(true)
-                }}
-                disabled={deleteMealLog.isPending}
+                onClick={() => setEditing(true)}
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                   'border border-border text-muted-foreground active:bg-muted/50',
-                  deleteMealLog.isPending && 'opacity-60'
                 )}
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -523,8 +523,9 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
 // Log with Changes Form
 // ---------------------------------------------------------------------------
 
-function LogWithChangesForm({ meal }: { meal: MealPlan }) {
+function LogWithChangesForm({ meal, editing, onEditDone }: { meal: MealPlan; editing?: boolean; onEditDone?: () => void }) {
   const logMeal = useLogMeal()
+  const deleteMealLog = useDeleteMealLog()
 
   const [status, setStatus] = useState<MealStatus>('COMPLETED')
   const [notes, setNotes] = useState('')
@@ -601,8 +602,10 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
     return Math.round((planned / total) * 100)
   }
 
-  function handleSubmit() {
-    if (logMeal.isPending) return
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit() {
+    if (logMeal.isPending || deleteMealLog.isPending || submitting) return
 
     const foods: FoodEntry[] = meal.foods.map((f, i) => {
       const override = foodOverrides.get(i)!
@@ -630,16 +633,32 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
       })
     }
 
-    logMeal.mutate({
+    const payload = {
       date: new Date().toISOString().split('T')[0],
       meal_number: meal.meal_number,
       meal_label: meal.meal_label,
       status,
       adherence: calculateAdherence(),
       notes: notes.trim() || null,
-      source: 'pwa',
+      source: 'pwa' as const,
       foods,
-    })
+    }
+
+    if (editing) {
+      // Delete existing log first, then re-log with changes
+      setSubmitting(true)
+      try {
+        await deleteMealLog.mutateAsync({
+          date: payload.date,
+          meal_number: meal.meal_number,
+        })
+        logMeal.mutate(payload, { onSuccess: () => onEditDone?.(), onSettled: () => setSubmitting(false) })
+      } catch {
+        setSubmitting(false)
+      }
+    } else {
+      logMeal.mutate(payload)
+    }
   }
 
   return (
@@ -758,39 +777,35 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
 
       {/* Notes */}
       <div>
-        <label className={cn(
-          'text-xs font-medium block mb-1.5',
-          extraFoods.length > 0 && !notes.trim() ? 'text-amber-500' : 'text-muted-foreground'
-        )}>
-          Notes {extraFoods.length > 0 ? '(required — describe what changed)' : '(optional)'}
+        <label className="text-xs font-medium text-muted-foreground block mb-1.5">
+          Notes (optional)
         </label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder={extraFoods.length > 0 ? 'What did you add and why?' : 'Any comments about this meal...'}
+          placeholder="Any comments about this meal..."
           rows={2}
-          className={cn(
-            'w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary resize-none',
-            extraFoods.length > 0 && !notes.trim() ? 'border-amber-500' : 'border-border'
-          )}
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
         />
       </div>
 
       {/* Submit */}
       <button
         onClick={handleSubmit}
-        disabled={logMeal.isPending || (extraFoods.length > 0 && !notes.trim())}
+        disabled={submitting || logMeal.isPending}
         className={cn(
           'w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors',
           'bg-primary text-primary-foreground active:bg-primary/80',
-          (logMeal.isPending || (extraFoods.length > 0 && !notes.trim())) && 'opacity-60'
+          (submitting || logMeal.isPending) && 'opacity-60'
         )}
       >
-        {logMeal.isPending ? (
+        {submitting || logMeal.isPending ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" />
-            Submitting...
+            {editing ? 'Saving...' : 'Submitting...'}
           </>
+        ) : editing ? (
+          'Save Changes'
         ) : extraFoods.length > 0 ? (
           'Log Added'
         ) : (
@@ -798,9 +813,19 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
         )}
       </button>
 
-      {logMeal.isError && (
+      {editing && (
+        <button
+          onClick={onEditDone}
+          disabled={submitting}
+          className="w-full py-2 rounded-lg text-sm font-medium text-muted-foreground active:bg-muted/50 transition-colors"
+        >
+          Cancel
+        </button>
+      )}
+
+      {(logMeal.isError || deleteMealLog.isError) && (
         <p className="text-xs text-destructive text-center">
-          Failed to log meal. Please try again.
+          Failed to {editing ? 'save changes' : 'log meal'}. Please try again.
         </p>
       )}
     </div>
