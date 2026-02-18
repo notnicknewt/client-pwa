@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNutritionToday } from '@/hooks/use-nutrition'
 import { useMealLogsToday, useLogMeal, useDeleteMealLog } from '@/hooks/use-meal-tracking'
+import { apiFetch } from '@/lib/api'
 import { useFoodSearch } from '@/hooks/use-food-search'
 import { calculateMacros, round1 } from '@/lib/macro-calc'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -530,7 +531,6 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
 
 function LogWithChangesForm({ meal, editing, onEditDone }: { meal: MealPlan; editing?: boolean; onEditDone?: () => void }) {
   const logMeal = useLogMeal()
-  const deleteMealLog = useDeleteMealLog()
 
   const [status, setStatus] = useState<MealStatus>('COMPLETED')
   const [notes, setNotes] = useState('')
@@ -610,7 +610,7 @@ function LogWithChangesForm({ meal, editing, onEditDone }: { meal: MealPlan; edi
   const [submitting, setSubmitting] = useState(false)
 
   async function handleSubmit() {
-    if (logMeal.isPending || deleteMealLog.isPending || submitting) return
+    if (logMeal.isPending || submitting) return
 
     const foods: FoodEntry[] = meal.foods.map((f, i) => {
       const override = foodOverrides.get(i)!
@@ -655,17 +655,17 @@ function LogWithChangesForm({ meal, editing, onEditDone }: { meal: MealPlan; edi
     }
 
     if (editing) {
-      // Delete existing log first, then re-log with changes
+      // Silent delete (no optimistic update) then re-log with changes
       setSubmitting(true)
       try {
-        await deleteMealLog.mutateAsync({
-          date: payload.date,
-          meal_number: meal.meal_number,
+        await apiFetch('/nutrition/meal-log', {
+          method: 'DELETE',
+          body: { date: payload.date, meal_number: meal.meal_number },
         })
-        logMeal.mutate(payload, { onSuccess: () => onEditDone?.(), onSettled: () => setSubmitting(false) })
       } catch {
-        setSubmitting(false)
+        // If delete fails, still try to POST — NC may upsert
       }
+      logMeal.mutate(payload, { onSuccess: () => onEditDone?.(), onSettled: () => setSubmitting(false) })
     } else {
       logMeal.mutate(payload)
     }
@@ -833,7 +833,7 @@ function LogWithChangesForm({ meal, editing, onEditDone }: { meal: MealPlan; edi
         </button>
       )}
 
-      {(logMeal.isError || deleteMealLog.isError) && (
+      {logMeal.isError && (
         <p className="text-xs text-destructive text-center">
           Failed to {editing ? 'save changes' : 'log meal'}. Please try again.
         </p>

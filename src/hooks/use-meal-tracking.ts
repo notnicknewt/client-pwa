@@ -31,10 +31,33 @@ export function useLogMeal() {
           }
         }
 
+        // Upsert: remove existing entry for same meal_number before adding
+        const existingMeals = (previous.logged_meals || [])
+        const replaced = existingMeals.find((lm) => lm.meal_number === newMeal.meal_number)
+        const filteredMeals = existingMeals.filter((lm) => lm.meal_number !== newMeal.meal_number)
+
+        // Subtract replaced meal's macros from totals before adding new ones
+        let baseTotals = previous.daily_totals
+        if (replaced?.foods?.length) {
+          let subP = 0, subC = 0, subF = 0, subCal = 0
+          for (const f of replaced.foods) {
+            subP += f.protein ?? 0
+            subC += f.carbs ?? 0
+            subF += f.fat ?? 0
+            subCal += f.calories ?? 0
+          }
+          baseTotals = {
+            protein_consumed: Math.max(0, (baseTotals?.protein_consumed ?? 0) - subP),
+            carbs_consumed: Math.max(0, (baseTotals?.carbs_consumed ?? 0) - subC),
+            fat_consumed: Math.max(0, (baseTotals?.fat_consumed ?? 0) - subF),
+            calories_consumed: Math.max(0, (baseTotals?.calories_consumed ?? 0) - subCal),
+          }
+        }
+
         qc.setQueryData<MealLogsToday>(['client', 'meal-logs', 'today'], {
           ...previous,
           logged_meals: [
-            ...(previous.logged_meals || []),
+            ...filteredMeals,
             {
               meal_number: newMeal.meal_number,
               status: newMeal.status,
@@ -52,11 +75,11 @@ export function useLogMeal() {
             },
           ],
           daily_totals: hasFoodMacros ? {
-            protein_consumed: (previous.daily_totals?.protein_consumed ?? 0) + addedProtein,
-            carbs_consumed: (previous.daily_totals?.carbs_consumed ?? 0) + addedCarbs,
-            fat_consumed: (previous.daily_totals?.fat_consumed ?? 0) + addedFat,
-            calories_consumed: (previous.daily_totals?.calories_consumed ?? 0) + addedCalories,
-          } : previous.daily_totals,
+            protein_consumed: (baseTotals?.protein_consumed ?? 0) + addedProtein,
+            carbs_consumed: (baseTotals?.carbs_consumed ?? 0) + addedCarbs,
+            fat_consumed: (baseTotals?.fat_consumed ?? 0) + addedFat,
+            calories_consumed: (baseTotals?.calories_consumed ?? 0) + addedCalories,
+          } : baseTotals,
         })
       }
       return { previous }
