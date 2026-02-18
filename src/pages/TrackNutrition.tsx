@@ -6,7 +6,7 @@ import { calculateMacros, round1 } from '@/lib/macro-calc'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { UtensilsCrossed, Check, ChevronDown, Loader2, Search, Plus, X, Undo2 } from 'lucide-react'
+import { UtensilsCrossed, Check, ChevronDown, Loader2, Search, Plus, X, Undo2, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MealPlan, MealFood, NutritionTodayData, FoodSearchResult } from '@/lib/types'
 
@@ -314,24 +314,9 @@ function MacroProgressBar({
 
 function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null }) {
   const [expanded, setExpanded] = useState(false)
-  const [showAddFood, setShowAddFood] = useState(false)
   const logMeal = useLogMeal()
   const deleteMealLog = useDeleteMealLog()
   const [loggingAsPlanned, setLoggingAsPlanned] = useState(false)
-
-  // Add food state
-  const [addFoodSearch, setAddFoodSearch] = useState('')
-  const [addFoodDebounced, setAddFoodDebounced] = useState('')
-  const [addedExtraFoods, setAddedExtraFoods] = useState<AddedFood[]>([])
-
-  useEffect(() => {
-    const timer = setTimeout(() => setAddFoodDebounced(addFoodSearch), 300)
-    return () => clearTimeout(timer)
-  }, [addFoodSearch])
-
-  const { data: addFoodResults, isLoading: addFoodSearching } = useFoodSearch(
-    showAddFood ? addFoodDebounced : ''
-  )
 
   const isLogged = logged !== null
 
@@ -357,76 +342,6 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
         foods,
       },
       {
-        onSettled: () => setLoggingAsPlanned(false),
-      }
-    )
-  }
-
-  function handleAddExtraFood(food: FoodSearchResult) {
-    const grams = food.serving_size || 100
-    const macros = calculateMacros(food, grams)
-    setAddedExtraFoods((prev) => [
-      ...prev,
-      { id: food.id, name: food.name, grams, calculatedMacros: macros, searchResult: food },
-    ])
-    setAddFoodSearch('')
-    setAddFoodDebounced('')
-  }
-
-  function handleUpdateExtraGrams(index: number, grams: number) {
-    setAddedExtraFoods((prev) =>
-      prev.map((f, i) => {
-        if (i !== index) return f
-        const macros = f.searchResult
-          ? calculateMacros(f.searchResult, grams)
-          : f.calculatedMacros
-        return { ...f, grams, calculatedMacros: macros }
-      })
-    )
-  }
-
-  function handleRemoveExtraFood(index: number) {
-    setAddedExtraFoods((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  function handleLogWithExtras() {
-    if (logMeal.isPending) return
-    setLoggingAsPlanned(true)
-
-    const foods = [
-      ...meal.foods.map((f) => ({
-        food_name: f.name,
-        grams_actual: f.grams_cooked,
-        is_substitution: false,
-      })),
-      ...addedExtraFoods.map((f) => ({
-        food_name: f.name,
-        grams_actual: f.grams,
-        is_substitution: false,
-        food_id: f.id || undefined,
-        protein: f.calculatedMacros.protein,
-        carbs: f.calculatedMacros.carbs,
-        fat: f.calculatedMacros.fat,
-        calories: f.calculatedMacros.calories,
-      })),
-    ]
-
-    logMeal.mutate(
-      {
-        date: new Date().toISOString().split('T')[0],
-        meal_number: meal.meal_number,
-        meal_label: meal.meal_label,
-        status: 'COMPLETED',
-        adherence: 100,
-        notes: null,
-        source: 'pwa',
-        foods,
-      },
-      {
-        onSuccess: () => {
-          setShowAddFood(false)
-          setAddedExtraFoods([])
-        },
         onSettled: () => setLoggingAsPlanned(false),
       }
     )
@@ -516,10 +431,7 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
                 {loggingAsPlanned ? 'Logging...' : 'Log as Planned'}
               </button>
               <button
-                onClick={() => {
-                  setExpanded(!expanded)
-                  if (!expanded) setShowAddFood(false)
-                }}
+                onClick={() => setExpanded(!expanded)}
                 className={cn(
                   'flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
                   'bg-muted text-muted-foreground active:bg-muted/80'
@@ -535,119 +447,19 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
               </button>
             </div>
 
-            {/* Add Food button */}
+            {/* Add Food button — opens Changes form */}
             <button
-              onClick={() => {
-                setShowAddFood(!showAddFood)
-                if (!showAddFood) setExpanded(false)
-              }}
+              onClick={() => setExpanded(true)}
               className={cn(
                 'w-full flex items-center justify-center gap-2 py-2.5 mt-2 rounded-lg text-sm font-medium transition-colors',
-                'border-2 border-dashed text-muted-foreground active:bg-muted/50',
-                showAddFood ? 'border-primary text-primary' : 'border-border'
+                'border-2 border-dashed border-border text-muted-foreground active:bg-muted/50',
+                expanded && 'border-primary text-primary'
               )}
             >
               <Plus className="h-4 w-4" />
               Add Food
             </button>
           </>
-        )}
-
-        {/* Inline add food panel */}
-        {!isLogged && showAddFood && !expanded && (
-          <div className="mt-3 pt-3 border-t border-border/50 space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                value={addFoodSearch}
-                onChange={(e) => setAddFoodSearch(e.target.value)}
-                placeholder="Search foods to add..."
-                className="w-full rounded-lg border border-border bg-background pl-9 pr-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-
-            {addFoodDebounced.trim().length >= 2 && (
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border/50">
-                {addFoodSearching && (
-                  <div className="flex items-center justify-center py-3">
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  </div>
-                )}
-                {addFoodResults?.foods?.map((food) => (
-                  <button
-                    key={food.id}
-                    onClick={() => handleAddExtraFood(food)}
-                    className="w-full text-left px-3 py-2 active:bg-muted/50 transition-colors"
-                  >
-                    <span className="text-sm font-medium truncate block">{food.name}</span>
-                    <p className="text-[11px] text-muted-foreground">
-                      P{food.protein_per_100g} C{food.carbs_per_100g} F{food.fat_per_100g} per 100g
-                    </p>
-                  </button>
-                ))}
-                {addFoodResults && addFoodResults.foods?.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-3">No results found</p>
-                )}
-              </div>
-            )}
-
-            {addedExtraFoods.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground">Extra Foods</p>
-                {addedExtraFoods.map((food, i) => (
-                  <div key={i} className="rounded-lg border border-border/50 p-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm truncate flex-1">{food.name}</span>
-                      <button
-                        onClick={() => handleRemoveExtraFood(i)}
-                        aria-label={`Remove ${food.name}`}
-                        className="p-1 rounded text-muted-foreground active:bg-muted transition-colors"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        value={food.grams}
-                        onChange={(e) => handleUpdateExtraGrams(i, Math.max(0, parseFloat(e.target.value) || 0))}
-                        className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground text-center focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                      <span className="text-xs text-muted-foreground">g</span>
-                      <span className="text-[11px] text-muted-foreground ml-auto">
-                        P{food.calculatedMacros.protein} C{food.calculatedMacros.carbs} F{food.calculatedMacros.fat} | {food.calculatedMacros.calories}kcal
-                      </span>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Log Planned + Extras button */}
-                <button
-                  onClick={handleLogWithExtras}
-                  disabled={loggingAsPlanned || logMeal.isPending}
-                  className={cn(
-                    'w-full flex items-center justify-center gap-2 py-2.5 mt-1 rounded-lg text-sm font-medium transition-colors',
-                    'bg-primary text-primary-foreground active:bg-primary/80',
-                    (loggingAsPlanned || logMeal.isPending) && 'opacity-60'
-                  )}
-                >
-                  {loggingAsPlanned ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Logging...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="h-4 w-4" />
-                      Log Planned + Extras
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
         )}
 
         {/* Error feedback for log-as-planned */}
@@ -660,27 +472,45 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
           <LogWithChangesForm meal={meal} />
         )}
 
-        {/* Undo button for logged meals */}
+        {/* Edit / Undo buttons for logged meals */}
         {isLogged && (
-          <div className="mt-2">
-            <button
-              onClick={handleUndo}
-              disabled={deleteMealLog.isPending}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                'border border-border text-muted-foreground active:bg-muted/50',
-                deleteMealLog.isPending && 'opacity-60'
-              )}
-            >
-              {deleteMealLog.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Undo2 className="h-3.5 w-3.5" />
-              )}
-              {deleteMealLog.isPending ? 'Undoing...' : 'Undo'}
-            </button>
+          <div className="mt-2 space-y-1.5">
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  handleUndo()
+                  // Open changes form once meal returns to pending
+                  setExpanded(true)
+                }}
+                disabled={deleteMealLog.isPending}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  'border border-border text-muted-foreground active:bg-muted/50',
+                  deleteMealLog.isPending && 'opacity-60'
+                )}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </button>
+              <button
+                onClick={handleUndo}
+                disabled={deleteMealLog.isPending}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  'border border-border text-muted-foreground active:bg-muted/50',
+                  deleteMealLog.isPending && 'opacity-60'
+                )}
+              >
+                {deleteMealLog.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Undo2 className="h-3.5 w-3.5" />
+                )}
+                {deleteMealLog.isPending ? 'Undoing...' : 'Undo'}
+              </button>
+            </div>
             {deleteMealLog.isError && (
-              <p className="text-xs text-destructive mt-1">Failed to undo. Try again.</p>
+              <p className="text-xs text-destructive mt-1">Failed — check connection and try again.</p>
             )}
           </div>
         )}
@@ -928,26 +758,32 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
 
       {/* Notes */}
       <div>
-        <label className="text-xs font-medium text-muted-foreground block mb-1.5">
-          Notes (optional)
+        <label className={cn(
+          'text-xs font-medium block mb-1.5',
+          extraFoods.length > 0 && !notes.trim() ? 'text-amber-500' : 'text-muted-foreground'
+        )}>
+          Notes {extraFoods.length > 0 ? '(required — describe what changed)' : '(optional)'}
         </label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Any comments about this meal..."
+          placeholder={extraFoods.length > 0 ? 'What did you add and why?' : 'Any comments about this meal...'}
           rows={2}
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+          className={cn(
+            'w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary resize-none',
+            extraFoods.length > 0 && !notes.trim() ? 'border-amber-500' : 'border-border'
+          )}
         />
       </div>
 
       {/* Submit */}
       <button
         onClick={handleSubmit}
-        disabled={logMeal.isPending}
+        disabled={logMeal.isPending || (extraFoods.length > 0 && !notes.trim())}
         className={cn(
           'w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors',
           'bg-primary text-primary-foreground active:bg-primary/80',
-          logMeal.isPending && 'opacity-60'
+          (logMeal.isPending || (extraFoods.length > 0 && !notes.trim())) && 'opacity-60'
         )}
       >
         {logMeal.isPending ? (
@@ -955,6 +791,8 @@ function LogWithChangesForm({ meal }: { meal: MealPlan }) {
             <Loader2 className="h-4 w-4 animate-spin" />
             Submitting...
           </>
+        ) : extraFoods.length > 0 ? (
+          'Log Added'
         ) : (
           'Submit'
         )}
@@ -1102,24 +940,26 @@ function LoggedExtraCard({ mealNumber, mealLabel, onUndo }: { mealNumber: number
         </div>
       </CardHeader>
       <CardContent className="pt-0 pb-3 px-4">
-        <button
-          onClick={handleUndo}
-          disabled={deleteMealLog.isPending}
-          className={cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-            'border border-border text-muted-foreground active:bg-muted/50',
-            deleteMealLog.isPending && 'opacity-60'
-          )}
-        >
-          {deleteMealLog.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Undo2 className="h-3.5 w-3.5" />
-          )}
-          {deleteMealLog.isPending ? 'Undoing...' : 'Undo'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleUndo}
+            disabled={deleteMealLog.isPending}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              'border border-border text-muted-foreground active:bg-muted/50',
+              deleteMealLog.isPending && 'opacity-60'
+            )}
+          >
+            {deleteMealLog.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Undo2 className="h-3.5 w-3.5" />
+            )}
+            {deleteMealLog.isPending ? 'Undoing...' : 'Undo'}
+          </button>
+        </div>
         {deleteMealLog.isError && (
-          <p className="text-xs text-destructive mt-1">Failed to undo. Try again.</p>
+          <p className="text-xs text-destructive mt-1">Failed — check connection and try again.</p>
         )}
       </CardContent>
     </Card>
