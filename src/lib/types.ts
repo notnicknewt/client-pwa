@@ -274,6 +274,12 @@ export interface MealLogPayload {
   }[]
 }
 
+// Meal log deletion
+export interface MealLogDeletePayload {
+  date: string
+  meal_number: number
+}
+
 // Weight logging
 export interface WeightLogPayload {
   date: string
