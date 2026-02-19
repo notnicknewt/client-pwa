@@ -36,6 +36,28 @@ interface FoodEntry {
   calories?: number
 }
 
+function getMealErrorDetail(error: unknown): string | null {
+  if (!(error instanceof Error)) return null
+
+  const raw = error.message.replace(/^API\s+\d+:\s*/, '').trim()
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as { detail?: string; error?: string }
+    if (typeof parsed.detail === 'string' && parsed.detail.trim()) return parsed.detail.trim()
+    if (typeof parsed.error === 'string' && parsed.error.trim()) return parsed.error.trim()
+  } catch {
+    // Non-JSON API errors are still useful to display
+  }
+
+  return raw
+}
+
+function buildMealErrorMessage(error: unknown, prefix: string): string {
+  const detail = getMealErrorDetail(error)
+  return detail ? `${prefix} ${detail}` : `${prefix} Please try again.`
+}
+
 // ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
@@ -331,10 +353,14 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
     if (loggingAsPlanned || logMeal.isPending) return
     setLoggingAsPlanned(true)
 
-    const foods: FoodEntry[] = meal.foods.map((f) => ({
+    // Include meal-level macros on first food so server can compute daily_totals
+    // (server sums per-food macros; without these, totals = 0 after refetch)
+    const mealCals = Math.round(meal.protein * 4 + meal.carbs * 4 + meal.fat * 9)
+    const foods: FoodEntry[] = meal.foods.map((f, i) => ({
       food_name: f.name,
       grams_actual: f.grams_cooked,
       is_substitution: false,
+      ...(i === 0 && { protein: meal.protein, carbs: meal.carbs, fat: meal.fat, calories: mealCals }),
     }))
 
     logMeal.mutate(
@@ -475,7 +501,7 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
 
         {/* Error feedback for log-as-planned */}
         {!isLogged && logMeal.isError && (
-          <p className="text-xs text-destructive mt-1">Failed to log meal. Tap to retry.</p>
+          <p className="text-xs text-destructive mt-1">{buildMealErrorMessage(logMeal.error, 'Failed to log meal.')}</p>
         )}
 
         {/* Log with changes form */}
@@ -695,7 +721,7 @@ function LogWithChangesForm({ meal, editing, onEditDone }: { meal: MealPlan; edi
           <option value="MODIFIED">Modified</option>
           <option value="SKIPPED">Skipped</option>
           <option value="PARTIAL">Partial</option>
-          <option value="CUSTOM">Custom</option>
+          <option value="CUSTOM">Custom (saved as Modified)</option>
         </select>
       </div>
 
@@ -843,7 +869,7 @@ function LogWithChangesForm({ meal, editing, onEditDone }: { meal: MealPlan; edi
 
       {logMeal.isError && (
         <p className="text-xs text-destructive text-center">
-          Failed to {editing ? 'save changes' : 'log meal'}. Please try again.
+          {buildMealErrorMessage(logMeal.error, editing ? 'Failed to save changes.' : 'Failed to log meal.')}
         </p>
       )}
     </div>
@@ -1404,7 +1430,7 @@ function FreeMealCard({
         </button>
 
         {logMeal.isError && (
-          <p className="text-xs text-destructive text-center">Failed to log meal. Please try again.</p>
+          <p className="text-xs text-destructive text-center">{buildMealErrorMessage(logMeal.error, 'Failed to log meal.')}</p>
         )}
       </CardContent>
     </Card>

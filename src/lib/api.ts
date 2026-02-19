@@ -40,7 +40,7 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`API ${res.status}: ${text.slice(0, 200)}`)
+    throw new Error(`API ${res.status}: ${text.slice(0, 800)}`)
   }
 
   // Handle empty responses (204 No Content, or empty body)
