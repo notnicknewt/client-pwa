@@ -43,7 +43,11 @@ export async function apiFetch<T>(
     throw new Error(`API ${res.status}: ${text.slice(0, 200)}`)
   }
 
-  return res.json()
+  // Handle empty responses (204 No Content, or empty body)
+  if (res.status === 204) return {} as T
+  const text = await res.text()
+  if (!text) return {} as T
+  return JSON.parse(text) as T
 }
 
 export async function apiUpload<T>(

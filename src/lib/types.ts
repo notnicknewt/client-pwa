@@ -272,6 +272,11 @@ export interface MealLogPayload {
     fat?: number
     calories?: number
   }[]
+  // Meal-level macros for optimistic update (not sent to server)
+  meal_protein?: number
+  meal_carbs?: number
+  meal_fat?: number
+  meal_calories?: number
 }
 
 // Meal log deletion

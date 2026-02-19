@@ -13,13 +13,15 @@ export function useMealLogsToday() {
 export function useLogMeal() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: MealLogPayload) =>
-      apiFetch('/nutrition/meal-log', { method: 'POST', body: data }),
+    mutationFn: (data: MealLogPayload) => {
+      const { meal_protein, meal_carbs, meal_fat, meal_calories, ...serverPayload } = data
+      return apiFetch('/nutrition/meal-log', { method: 'POST', body: serverPayload })
+    },
     onMutate: async (newMeal) => {
       await qc.cancelQueries({ queryKey: ['client', 'meal-logs'] })
       const previous = qc.getQueryData<MealLogsToday>(['client', 'meal-logs', 'today'])
       if (previous) {
-        // Sum macros from food entries if available
+        // Calculate added macros: prefer per-food sums, fall back to meal-level
         let addedProtein = 0, addedCarbs = 0, addedFat = 0, addedCalories = 0
         const hasFoodMacros = newMeal.foods.some((f) => f.protein != null)
         if (hasFoodMacros) {
@@ -29,6 +31,11 @@ export function useLogMeal() {
             addedFat += f.fat ?? 0
             addedCalories += f.calories ?? 0
           }
+        } else if (newMeal.meal_protein != null) {
+          addedProtein = newMeal.meal_protein
+          addedCarbs = newMeal.meal_carbs ?? 0
+          addedFat = newMeal.meal_fat ?? 0
+          addedCalories = newMeal.meal_calories ?? 0
         }
 
         // Upsert: remove existing entry for same meal_number before adding
@@ -74,24 +81,24 @@ export function useLogMeal() {
               })),
             },
           ],
-          daily_totals: hasFoodMacros ? {
+          daily_totals: {
             protein_consumed: (baseTotals?.protein_consumed ?? 0) + addedProtein,
             carbs_consumed: (baseTotals?.carbs_consumed ?? 0) + addedCarbs,
             fat_consumed: (baseTotals?.fat_consumed ?? 0) + addedFat,
             calories_consumed: (baseTotals?.calories_consumed ?? 0) + addedCalories,
-          } : baseTotals,
+          },
         })
       }
       return { previous }
     },
-    onError: (_err, _vars, context) => {
+    onError: (err, _vars, context) => {
+      console.error('[useLogMeal] mutation failed:', err)
       if (context?.previous) {
         qc.setQueryData(['client', 'meal-logs', 'today'], context.previous)
       }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['client', 'meal-logs'] })
-      qc.invalidateQueries({ queryKey: ['client', 'nutrition'] })
     },
   })
 }
@@ -136,14 +143,14 @@ export function useDeleteMealLog() {
       }
       return { previous }
     },
-    onError: (_err, _vars, context) => {
+    onError: (err, _vars, context) => {
+      console.error('[useDeleteMealLog] mutation failed:', err)
       if (context?.previous) {
         qc.setQueryData(['client', 'meal-logs', 'today'], context.previous)
       }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['client', 'meal-logs'] })
-      qc.invalidateQueries({ queryKey: ['client', 'nutrition'] })
     },
   })
 }

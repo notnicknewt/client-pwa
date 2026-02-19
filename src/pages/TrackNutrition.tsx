@@ -347,6 +347,10 @@ function MealCard({ meal, logged }: { meal: MealPlan; logged: LoggedMeal | null 
         notes: null,
         source: 'pwa',
         foods,
+        meal_protein: meal.protein,
+        meal_carbs: meal.carbs,
+        meal_fat: meal.fat,
+        meal_calories: meal.protein * 4 + meal.carbs * 4 + meal.fat * 9,
       },
       {
         onSettled: () => setLoggingAsPlanned(false),
@@ -652,6 +656,10 @@ function LogWithChangesForm({ meal, editing, onEditDone }: { meal: MealPlan; edi
       notes: notes.trim() || null,
       source: 'pwa' as const,
       foods,
+      meal_protein: meal.protein,
+      meal_carbs: meal.carbs,
+      meal_fat: meal.fat,
+      meal_calories: meal.protein * 4 + meal.carbs * 4 + meal.fat * 9,
     }
 
     if (editing) {
